@@ -1,9 +1,6 @@
 .DS_Store
 .idea/
 
-# review-cycle runtime state: minted approval tokens live next to the
-# review record file in the target project, not in this plugin repo, so
-# there is nothing to ignore for them here. This entry covers a local
-# settings backup produced by a CLI-less install.sh run against this repo
-# itself (e.g. during manual testing).
+# Local settings backup produced by a CLI-less install.sh run against this
+# repo itself (e.g. during manual testing).
 *.bak

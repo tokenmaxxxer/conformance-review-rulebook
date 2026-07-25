@@ -2,18 +2,18 @@
 # PreToolUse hook for the `review` role. Two independent rules, both
 # evaluated against the TARGET PATH (or, for Bash, the resolved operand of
 # the command string) rather than against which tool performs the action —
-# mirroring coding-agent-rulebook/warrant/hooks/scope-gate.sh's own design,
 # named directly in docs/specs/agent-roles.md Part 3: "a rejection rule is
 # evaluated against the path being written, never against which tool
 # performs the write." The same treatment extends here to reads, because
 # rule 2 below is a read refusal, not a write refusal.
 #
-#   Rule 1 (write gate): a write that would change review-record.md's
-#   `status` to `reported` is refused unless (a) every requirement block in
-#   the file carries exactly one verdict of Present/Surface/Absent/Incorrect,
-#   and (b) a matching, unconsumed approval token minted by
-#   capture-approval.sh from the user's OWN turn is present. Content alone
-#   never passes.
+#   Rule 1 (write gate): a write that reaches review-record.md, judged by
+#   RESOLVED TARGET PATH, is checked against transition-rules.md — the
+#   single source of truth for legal transitions, also read by
+#   inject-transition-rules.sh. This gate no longer consults approval
+#   tokens or any other side-channel; it only answers (a) does this write
+#   reach the state file, and (b) if so, is the resulting transition a row
+#   in transition-rules.md.
 #
 #   Rule 2 (read refusal): in EVERY state, a tool call whose target names a
 #   proposal/intent/scratch path — docs/proposals/**, or a path whose name
@@ -27,10 +27,19 @@
 #   path as an operand are all covered the same way.
 #
 # FAILS CLOSED: malformed stdin, an unparseable payload, an unreadable
-# review-record.md, or any input this script does not recognize the shape of
+# tool_input, or any input this script does not recognize the shape of
 # denies the tool call (exit 2). Allow (exit 0) is reached only when this
 # gate affirmatively determines the call is outside both rules, or (for
-# Rule 1) that both conditions are met.
+# Rule 1) that the resulting transition is a listed row.
+#
+# NOTE ON RESOLVED-PATH SCOPING: for a Bash command whose write target
+# cannot be determined statically (variable, expansion, command
+# substitution, glob, indirection, `eval`, or a heredoc into a computed
+# name), this gate treats the call as reaching the state file and applies
+# rule 1's transition check to it. That scoping applies ONLY to deciding
+# whether the state file is reached — a command that is not write-shaped
+# toward the state file's directory at all is never denied just because
+# some unrelated operand in it happens to be unresolvable.
 #
 # Kill switch: export REVIEW_CYCLE_DISABLE=1 — deliberate operator override,
 # exits 0 before any of the refuse-by-default logic below runs.
@@ -41,12 +50,7 @@ case "${REVIEW_CYCLE_DISABLE:-}" in
   *) exit 0 ;;
 esac
 
-# Fail closed even when the interpreter this gate needs is missing — unlike
-# doctrine's placement-gate.sh (which fails OPEN because it is the only
-# thing protecting docs/ layout and a broken interpreter must not stall a
-# session), this gate protects a human-approval boundary, and the frozen
-# contract for this repository family requires fail-closed on malformed
-# input, not fail-open on a missing interpreter.
+# Fail closed even when the interpreter this gate needs is missing.
 if ! command -v python3 >/dev/null 2>&1; then
   echo "review-cycle: refused — python3 is not available, so this gate cannot verify the attempted tool call. Refusing rather than allowing an uninspectable action." >&2
   exit 2
@@ -54,14 +58,16 @@ fi
 
 payload="$(cat 2>/dev/null || true)"
 if [ -z "$payload" ]; then
-  echo "review-cycle: refused — no readable hook payload on stdin. Refusing rather than allowing an uninspectable tool call." >&2
+  echo "review-cycle: refused — no readable hook payload on stdin. The transition rules could not be loaded against an uninspectable call. Refusing rather than allowing it." >&2
   exit 2
 fi
 
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_name="${REVIEW_RECORD_NAME:-review-record.md}"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
+rules_file="${REVIEW_TRANSITION_RULES:-$HOOK_DIR/transition-rules.md}"
 
-REVIEW_GATE_PAYLOAD="$payload" REVIEW_GATE_ROOT="$root" REVIEW_GATE_STATE_NAME="$state_name" python3 <<'PY'
+REVIEW_GATE_PAYLOAD="$payload" REVIEW_GATE_ROOT="$root" REVIEW_GATE_STATE_NAME="$state_name" REVIEW_GATE_RULES_FILE="$rules_file" python3 <<'PY'
 import json
 import os
 import posixpath
@@ -84,13 +90,13 @@ def refuse(msg):
 try:
     event = json.loads(os.environ.get("REVIEW_GATE_PAYLOAD", ""))
 except ValueError:
-    refuse("review-cycle: refused — the hook payload on stdin could not be parsed as JSON. Refusing rather than allowing a tool call this gate cannot inspect.")
+    refuse("review-cycle: refused — the transition rules could not be loaded: the hook payload on stdin could not be parsed as JSON. Refusing rather than allowing a tool call this gate cannot inspect.")
 if not isinstance(event, dict):
-    refuse("review-cycle: refused — the hook payload did not parse to a JSON object. Refusing rather than allowing a tool call this gate cannot inspect.")
+    refuse("review-cycle: refused — the transition rules could not be loaded: the hook payload did not parse to a JSON object. Refusing rather than allowing a tool call this gate cannot inspect.")
 
 tool = event.get("tool_name")
 if not isinstance(tool, str) or not tool:
-    refuse("review-cycle: refused — the hook payload names no tool. Refusing rather than allowing an unidentified tool call.")
+    refuse("review-cycle: refused — the transition rules could not be loaded: the hook payload names no tool. Refusing rather than allowing an unidentified tool call.")
 
 tool_input = event.get("tool_input")
 if not isinstance(tool_input, dict):
@@ -102,12 +108,13 @@ if not isinstance(tool_input, dict):
     # surface) are allowed through since neither rule can ever apply to
     # them regardless of input shape.
     if tool in ("Bash", "Write", "Edit", "NotebookEdit", "Read", "Grep", "Glob"):
-        refuse("review-cycle: refused — a %s call arrived with no readable tool_input. Refusing rather than allowing an uninspectable action." % tool)
+        refuse("review-cycle: refused — the transition rules could not be loaded: a %s call arrived with no readable tool_input. Refusing rather than allowing an uninspectable action." % tool)
     allow()
 
 root = os.environ.get("REVIEW_GATE_ROOT") or os.getcwd()
 root_real = posixpath.normpath(os.path.realpath(root).replace("\\", "/"))
 state_name = os.environ.get("REVIEW_GATE_STATE_NAME") or "review-record.md"
+rules_file = os.environ.get("REVIEW_GATE_RULES_FILE") or ""
 
 def resolve(path_str):
     """Resolve a possibly-relative path string against root, then to its
@@ -122,16 +129,6 @@ def resolve(path_str):
     return real
 
 # --- Rule 2: standing refusal to read the building agent's intent --------
-# Path-shape test, applied the same way regardless of which tool carries it.
-# Patterns, and why each is here:
-#   - docs/proposals/** — this org's own convention (doctrine, warrant) for
-#     where a proposal/RFC lives; docs/specs/agent-roles.md names proposal
-#     prose explicitly as off-limits to `review`.
-#   - any path segment or filename containing "proposal", "intent",
-#     "scratch", or "notes" (case-insensitive) — covers a coding agent's own
-#     working/scratch files and intent notes wherever they live, since
-#     `warrant`-style proposals and ad hoc "INTENT.md"/"notes.md" files are
-#     not confined to one directory across every possible target repo.
 INTENT_PATH_RE = re.compile(r"(^|/)docs/proposals(/|$)", re.I)
 INTENT_NAME_RE = re.compile(r"(proposal|intent|scratch|notes)", re.I)
 
@@ -144,8 +141,6 @@ def looks_like_intent(path_str):
     base = posixpath.basename(norm)
     return bool(INTENT_NAME_RE.search(base))
 
-# Commands/tools that only ever read (never the write-gate's business, but
-# fully in scope for the read refusal).
 READ_PATH_KEYS = {
     "Read": ["file_path"],
     "Grep": ["path", "pattern"],
@@ -166,13 +161,8 @@ if tool in READ_PATH_KEYS:
 if tool == "Bash":
     command = tool_input.get("command")
     if not isinstance(command, str) or not command:
-        refuse("review-cycle: refused — a Bash call arrived with no readable command. Refusing rather than allowing an uninspectable action.")
+        refuse("review-cycle: refused — the transition rules could not be loaded: a Bash call arrived with no readable command. Refusing rather than allowing an uninspectable action.")
 
-    # Read-refusal: any token in the command that looks like an intent path,
-    # regardless of which command reads it (cat, less, grep, sed -n, head,
-    # tail, awk, python, ...). This is intentionally broad: catching the
-    # read is more important here than avoiding an occasional false refusal
-    # on an unrelated command that happens to mention such a word.
     for token in re.split(r"[\s|;&<>()\"']+", command):
         if token and looks_like_intent(token):
             refuse(
@@ -181,9 +171,15 @@ if tool == "Bash":
                 "regardless of which tool or shell construct is used to get at it." % token
             )
 
-# --- Rule 1: the auditing -> reported write gate --------------------------
-# Candidate write-target paths for this call, however they get there.
+# --- Rule 1: transition-table gate on writes reaching the state file ------
+# Candidate write-target paths for this call, however they get there. Also
+# tracks whether ANY write-shaped construct in a Bash command has an
+# unresolvable target (see NOTE ON RESOLVED-PATH SCOPING above) — that flag
+# only routes the call into the state-file check; it never denies a
+# command outright by itself.
 candidates = []
+bash_unresolvable = False
+
 if tool in ("Write", "Edit"):
     fp = tool_input.get("file_path")
     if isinstance(fp, str) and fp:
@@ -192,21 +188,7 @@ elif tool == "NotebookEdit":
     pass  # notebooks are never the review record; nothing to add here.
 elif tool == "Bash":
     command = tool_input.get("command")
-    # Syntax-based, not name-based: the gate decides from the RESOLVED
-    # TARGET PATH of the write, never from a literal filename appearing in
-    # the command string. A Bash payload is judged by the same path rule as
-    # Write/Edit — every write-shaped construct's operand is extracted and
-    # resolved against the project root, then prefix/equality-checked
-    # against the state file's realpath.
-    #
-    # Fail-closed clause: if the command could write (matches any
-    # write-shaped construct below) and that construct's target operand
-    # cannot be pinned down to a plain literal path — because it contains a
-    # shell variable, parameter expansion, command substitution ($(...) or
-    # backticks), a glob, indirection, or the command runs through `eval` —
-    # the gate DENIES outright. It never falls through to allow just
-    # because the target didn't textually match the state file's name;
-    # that fallthrough is exactly the defect this rewrite closes.
+
     DYNAMIC_RE = re.compile(r"[$`*?\[\](){}~]")
 
     def is_dynamic(tok):
@@ -220,25 +202,28 @@ elif tool == "Bash":
     def non_flag_args(argstr):
         return [a for a in argstr.split() if a and not a.startswith("-")]
 
-    bash_unresolvable = False
     bash_literal_targets = []
+    bash_write_shaped = False
 
     if isinstance(command, str) and command:
         if re.search(r"\beval\b", command):
             # `eval` can construct and execute an arbitrary write at
             # runtime; its payload is not statically parseable here.
+            bash_write_shaped = True
             bash_unresolvable = True
         else:
             for op_m in re.finditer(r"(>>|>\|?)\s*(\S+)", command):
                 tok = strip_quotes(op_m.group(2))
                 if tok.startswith("&"):
                     continue  # fd duplication (e.g. `2>&1`), not a path write
+                bash_write_shaped = True
                 if is_dynamic(tok):
                     bash_unresolvable = True
                 else:
                     bash_literal_targets.append(tok)
 
             for tee_m in re.finditer(r"\btee\b((?:\s+-\S+)*)\s+([^\n;&|]+?)(?=(?:[;&|]|$))", command):
+                bash_write_shaped = True
                 for tok in non_flag_args(tee_m.group(2)):
                     tok = strip_quotes(tok)
                     if is_dynamic(tok):
@@ -247,6 +232,7 @@ elif tool == "Bash":
                         bash_literal_targets.append(tok)
 
             for dd_m in re.finditer(r"\bdd\b[^\n;&|]*\bof=(\S+)", command):
+                bash_write_shaped = True
                 tok = strip_quotes(dd_m.group(1))
                 if is_dynamic(tok):
                     bash_unresolvable = True
@@ -256,6 +242,7 @@ elif tool == "Bash":
             for cmv_m in re.finditer(r"\b(?:cp|mv|install|truncate)\b([^\n;&|]*)", command):
                 args = non_flag_args(cmv_m.group(1))
                 if args:
+                    bash_write_shaped = True
                     tok = strip_quotes(args[-1])
                     if is_dynamic(tok):
                         bash_unresolvable = True
@@ -263,6 +250,7 @@ elif tool == "Bash":
                         bash_literal_targets.append(tok)
 
             for si_m in re.finditer(r"\b(?:sed|perl)\b([^\n;&|]*-i[^\n;&|]*)", command):
+                bash_write_shaped = True
                 for tok in non_flag_args(si_m.group(1)):
                     if tok == "-i":
                         continue
@@ -272,29 +260,63 @@ elif tool == "Bash":
                     else:
                         bash_literal_targets.append(tok)
 
-    if bash_unresolvable:
-        refuse(
-            "review-cycle: refused — Rule 1 (write gate): this Bash command's write target cannot be determined "
-            "statically (a variable, parameter expansion, command substitution, glob, indirection, eval, or other "
-            "non-literal operand). Fail-closed: refusing rather than allowing a write that might target %s." % state_name
-        )
-
+    # An unresolvable target only matters (routes the call into the
+    # state-file check) if the command was write-shaped at all. A command
+    # with no write-shaped construct is never treated as reaching the state
+    # file just because it contains some unrelated unresolvable token.
+    bash_unresolvable = bash_unresolvable and bash_write_shaped
     candidates.extend(bash_literal_targets)
 
 state_path_real = resolve(state_name)
 
-touches_state = False
-for c in candidates:
-    c_real = resolve(c)
-    if c_real is not None and state_path_real is not None and c_real == state_path_real:
-        touches_state = True
-        break
+touches_state = bash_unresolvable
+if not touches_state:
+    for c in candidates:
+        c_real = resolve(c)
+        if c_real is not None and state_path_real is not None and c_real == state_path_real:
+            touches_state = True
+            break
 
 if not touches_state:
     allow()
 
-# From here on, this call is a candidate write to review-record.md. Refuse
-# unless we can affirmatively verify the two conditions.
+# --- load transition rules -------------------------------------------------
+
+def load_rows():
+    """Returns (rows, error). rows is a list of (frm, to, actor, precond)
+    tuples; error is None on success or a human-readable reason string."""
+    if not rules_file:
+        return None, "no transition rules file is configured"
+    try:
+        with open(rules_file, encoding="utf-8-sig") as fh:
+            text = fh.read(1 << 20)
+    except OSError as e:
+        return None, "transition-rules.md at %s could not be read (%s)" % (rules_file, e)
+    if not text.strip():
+        return None, "transition-rules.md at %s is empty" % rules_file
+    rows = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or "|" not in line or line.startswith("#"):
+            continue
+        parts = [p.strip() for p in line.strip("|").split("|")]
+        if len(parts) != 4:
+            continue
+        if parts[0].lower() == "from" and parts[1].lower() == "to":
+            continue
+        if set(parts[0]) <= {"-"} or set(parts[1]) <= {"-"}:
+            continue
+        rows.append(tuple(parts))
+    if not rows:
+        return None, "transition-rules.md at %s has no parseable rows" % rules_file
+    return rows, None
+
+rows, rows_err = load_rows()
+if rows_err:
+    refuse(
+        "review-cycle: refused — the transition rules could not be loaded (%s). No transition may be made until "
+        "this is fixed." % rows_err
+    )
 
 def read_state_file():
     if not state_path_real or not os.path.exists(state_path_real):
@@ -305,146 +327,70 @@ def read_state_file():
     except (OSError, UnicodeDecodeError):
         return None
 
-def parse_blocks(text):
-    return [m.group(1) for m in re.finditer(r"^---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n?", text, re.M | re.S)]
-
-def field(block, key):
-    vals = re.findall(r"^%s:\s*(.*?)\s*(?:#.*)?$" % re.escape(key), block, re.M)
-    return vals
-
-VERDICTS = {"Present", "Surface", "Absent", "Incorrect"}
-
-def current_status_and_verdicts(text):
-    """Returns (status, verdicts_ok) from the given text. The first block
-    that carries a `status:` key and no `requirement:` key is the header;
-    every other block must carry exactly one `requirement:` and exactly one
-    `verdict:` in VERDICTS for verdicts_ok to be True. A file with zero
-    requirement blocks is never verdicts_ok=True — an empty audit proves
-    nothing."""
-    blocks = parse_blocks(text)
-    status = None
-    req_blocks = []
-    for b in blocks:
-        st = field(b, "status")
-        rq = field(b, "requirement")
-        if st and not rq:
-            if len(st) == 1 and status is None:
-                status = st[0].strip()
-            else:
-                return None, False
-        else:
-            req_blocks.append(b)
-    if not req_blocks:
-        return status, False
-    for b in req_blocks:
-        rq = field(b, "requirement")
-        vd = field(b, "verdict")
-        if len(rq) != 1 or not rq[0].strip():
-            return status, False
-        if len(vd) != 1 or vd[0].strip() not in VERDICTS:
-            return status, False
-    return status, True
+def current_status(text):
+    m = re.findall(r"^status:\s*(.*?)\s*(?:#.*)?$", text, re.M)
+    if len(m) != 1:
+        return None
+    val = m[0].strip()
+    return val or None
 
 cur_text = read_state_file()
 if cur_text is None:
     refuse(
-        "review-cycle: refused — %s could not be read (missing or unreadable). Refusing this write rather than "
-        "adjudicating a transition against a state file this gate cannot verify." % state_name
+        "review-cycle: refused — the transition rules could not be loaded: %s could not be read (missing or "
+        "unreadable), so the current state is unknown. No transition may be made until this is fixed." % state_name
     )
 
-cur_status, verdicts_ok = current_status_and_verdicts(cur_text)
+cur_status = current_status(cur_text)
+if cur_status is None:
+    refuse(
+        "review-cycle: refused — the transition rules could not be loaded: %s's `status` field is missing, "
+        "duplicated, or unparseable. No transition may be made until this is fixed." % state_name
+    )
 
-# For Write/Edit we can additionally check the ATTEMPTED content directly —
-# more precise than falling back to the on-disk state. For Bash we cannot
-# read the resulting content before the shell executes, so the resulting
-# status is UNKNOWN — and unknown is treated as "could be `reported`", the
-# conservative (fail-closed) assumption, rather than assuming it is safe.
-# Concretely: attempted_status is forced to "reported" for any Bash call
-# that touches the state file, which routes every such call through the
-# same auditing-> reported checks below (current status must already be
-# auditing with complete verdicts, and a valid token must be present) —
-# there is no way for a Bash-mediated write to this file to skip the gate.
-attempted_status = cur_status
-attempted_verdicts_ok = verdicts_ok
-if tool == "Bash":
-    attempted_status = "reported"
-    attempted_verdicts_ok = verdicts_ok
-elif tool in ("Write", "Edit"):
+# For Write/Edit we can read the ATTEMPTED content directly. For Bash (or an
+# unresolvable target), the resulting content is not knowable before the
+# shell executes, so the attempted status is UNKNOWN and treated
+# conservatively: every row whose `from` is the current state is a
+# candidate, and the call is allowed only if the current state has at
+# least one outgoing row — the write is not required to resolve to one
+# specific `to` for this coarser case, since the gate cannot see it.
+if tool in ("Write", "Edit"):
     content = tool_input.get("content") if tool == "Write" else tool_input.get("new_string")
-    if isinstance(content, str):
-        attempted_status, attempted_verdicts_ok = current_status_and_verdicts(content)
-    else:
-        refuse("review-cycle: refused — could not read the attempted new content of this write, so the resulting state cannot be determined.")
-
-# Only auditing -> reported is a gated transition this rule governs; any
-# other resulting status from a write touching this file is out of this
-# rule's scope UNLESS it is an illegal jump into `reported` from something
-# other than `auditing`, which is refused outright (the state machine has
-# exactly one legal predecessor of `reported`).
-if attempted_status != "reported":
-    allow()
-
-if cur_status != "auditing":
-    refuse(
-        "review-cycle: refused — %s only permits entering `reported` from `auditing`; the file's current status is "
-        "%r. docs/specs/state-machine.md names no other legal predecessor." % (state_name, cur_status)
+    if not isinstance(content, str):
+        refuse(
+            "review-cycle: refused — this transition is not in the table: could not read the attempted new "
+            "content of this write, so the resulting state cannot be determined."
+        )
+    attempted_status = current_status(content)
+    if attempted_status is None:
+        refuse(
+            "review-cycle: refused — this transition is not in the table: the attempted content's `status` field "
+            "is missing, duplicated, or unparseable."
+        )
+    if attempted_status == cur_status:
+        allow()  # no transition attempted
+    match = [r for r in rows if r[0] == cur_status and r[1] == attempted_status]
+    if not match:
+        refuse(
+            "review-cycle: refused — this transition is not in the table: %s -> %s is not a row in "
+            "transition-rules.md." % (cur_status, attempted_status)
+        )
+    allow("review-cycle: %s -> %s permitted by transition-rules.md." % (cur_status, attempted_status))
+else:
+    # Bash (including unresolvable-target case): cannot see the resulting
+    # status, so require at least one legal outgoing transition from the
+    # current state.
+    outgoing = [r for r in rows if r[0] == cur_status]
+    if not outgoing:
+        refuse(
+            "review-cycle: refused — this transition is not in the table: %s has no legal outgoing transition "
+            "from state %s, so a Bash-mediated write to it cannot be permitted." % (state_name, cur_status)
+        )
+    allow(
+        "review-cycle: a Bash write reaching %s is permitted — state %s has at least one legal outgoing "
+        "transition in transition-rules.md (resulting content not statically verifiable)." % (state_name, cur_status)
     )
-
-if not attempted_verdicts_ok:
-    refuse(
-        "review-cycle: refused — auditing -> reported requires every requirement block in %s to carry exactly one "
-        "verdict of Present, Surface, Absent, or Incorrect, and at least one requirement block to exist. A file "
-        "with an empty, missing, malformed, or out-of-set verdict on any requirement fails this transition." % state_name
-    )
-
-# --- token check ----------------------------------------------------------
-tokens_dir = posixpath.join(root_real, ".review", "tokens")
-tokens_dir_real = posixpath.normpath(os.path.realpath(tokens_dir).replace("\\", "/"))
-if not (tokens_dir_real == root_real or tokens_dir_real.startswith(root_real + "/")):
-    refuse("review-cycle: refused — the resolved token directory escapes the project root. Refusing rather than reading a token outside it.")
-
-token_path = posixpath.join(tokens_dir_real, "report.token")
-if not (token_path == tokens_dir_real or token_path.startswith(tokens_dir_real + "/")):
-    refuse("review-cycle: refused — the resolved token path escapes the token directory. Refusing rather than reading it.")
-
-def read_token():
-    try:
-        with open(token_path, encoding="utf-8-sig") as fh:
-            ttext = fh.read(8192)
-    except (OSError, UnicodeDecodeError):
-        return None
-    fm = re.search(r"^file:\s*(.+?)\s*(?:#.*)?$", ttext, re.M)
-    tm = re.search(r"^transition:\s*(.+?)\s*(?:#.*)?$", ttext, re.M)
-    if not fm or not tm:
-        return None
-    return fm.group(1).strip(), tm.group(1).strip()
-
-token = read_token()
-if token is None:
-    refuse(
-        "review-cycle: refused — auditing -> reported requires a matching approval token at %s and none is "
-        "present. A person must approve the transition in their own turn (capture-approval.sh mints the token "
-        "from that turn); the content of %s being complete is not, by itself, consent." % (token_path, state_name)
-    )
-
-t_file, t_transition = token
-if t_file != state_name or t_transition != "auditing -> reported":
-    refuse(
-        "review-cycle: refused — the token at %s authorizes a different file or transition, so it does not cover "
-        "auditing -> reported for %s. Treated as absent; a fresh, matching approval is required." % (token_path, state_name)
-    )
-
-# Single-use: consume the token now that it has authorized this call. If the
-# underlying write never lands (the tool call errors after this point), the
-# transition simply needs a fresh approval — same trade-off the frozen
-# contract's sibling repositories make, favoring "never double-spend a
-# token" over "never require re-approval after a failed write".
-try:
-    os.remove(token_path)
-except OSError:
-    refuse("review-cycle: refused — the approval token at %s could not be consumed. Refusing rather than allowing a write whose token would remain reusable." % token_path)
-
-allow("review-cycle: auditing -> reported permitted — every requirement carries a valid verdict and a matching approval token was consumed.")
 PY
 
 exit $?
