@@ -386,8 +386,6 @@ if tool in ("Write", "Edit"):
             "review-cycle: refused — this transition is not in the table: the attempted content's `status` field "
             "is missing, duplicated, or unparseable."
         )
-    if attempted_status == cur_status:
-        allow()  # no transition attempted
     match = [r for r in rows if r[0] == cur_status and r[1] == attempted_status]
     if not match:
         refuse(
