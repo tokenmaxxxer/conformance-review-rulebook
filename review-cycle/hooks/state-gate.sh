@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# PreToolUse hook for the `review` role. Two independent rules, both
-# evaluated against the TARGET PATH (or, for Bash, the resolved operand of
-# the command string) rather than against which tool performs the action —
-# named directly in docs/specs/agent-roles.md Part 3: "a rejection rule is
-# evaluated against the path being written, never against which tool
-# performs the write." The same treatment extends here to reads, because
-# rule 2 below is a read refusal, not a write refusal.
+# PreToolUse hook for the `review` role, conforming to
+# docs/specs/role-handoff-contract.md v2 (the blackboard/event model). This
+# gate now enforces exactly two things, both evaluated against the TARGET
+# PATH (or, for Bash, the resolved operand of the command string) rather
+# than against which tool performs the action — named directly in
+# docs/specs/agent-roles.md Part 3: "a rejection rule is evaluated against
+# the path being written, never against which tool performs the write."
 #
 #   Rule 1 (write gate): a write that reaches review-record.md, judged by
 #   RESOLVED TARGET PATH, is checked against transition-rules.md — the
@@ -21,28 +21,45 @@
 #   synthetic starting state). Adding `draft-reported` therefore required
 #   no change to this script's logic, only to transition-rules.md.
 #
-#   Rule 2 (read refusal): in EVERY state, a tool call whose target resolves
-#   to an existing file declaring a frontmatter `kind:` field outside this
-#   role's accepted-kind set — {build-proposal, hypothesis,
-#   feasibility-record}, per docs/specs/role-handoff-contract.md section 3's
-#   accept/refuse row for `review` — is refused outright. This replaces the
-#   former path-shaped rule (a `docs/proposals(/|$)` regex plus a
-#   proposal/intent/scratch filename check), which broke the moment an
-#   intent-bearing kind moved out of `docs/proposals/`. Refusal is now by
-#   declared `kind`, not by path, and is checked regardless of tool: Read,
-#   Grep, Glob, NotebookEdit's notebook_path, and Bash commands (cat, less,
-#   grep, sed -n, head, tail, ...) that name such a path as an operand are
-#   all covered the same way. A target with no readable frontmatter `kind:`
-#   field is not refused by this rule (nothing to check it against).
+#   NOTE ON v1 RULE 2 (removed): a prior version of this gate refused any
+#   read whose target declared a frontmatter `kind:` outside review's
+#   accepted-kind set ({build-proposal, hypothesis, feasibility-record}).
+#   Contract v2 §4 ("READ-broad") directly contradicts that behavior:
+#   "Every role may read every other role's record, unconditionally, for
+#   context. Reading something is never itself a violation." That rule has
+#   been deleted outright, not loosened — no replacement read-refusal logic
+#   exists in this gate, and none is warranted. DEPENDS-ON is still a real
+#   v2 constraint (review may not build a `spec_vs_built` finding on
+#   `hypothesis` narrative alone — contract §4: "Reading the narrative is
+#   allowed; building `spec_vs_built` on it alone is not"), but this is a
+#   judgment about which evidence a role cited to reach a conclusion, not a
+#   structural property of a write's target path or content shape. It is
+#   NOT mechanically checkable the way Rule 1's transition-table lookup is,
+#   and this gate does not attempt heuristic detection for it (e.g.
+#   grepping a finding block for whether it mentions `hypothesis`) — per
+#   contract §14, a heuristic mechanical check for a non-mechanical
+#   property produces false confidence, which is worse than no check.
+#   Enforcement of DEPENDS-ON for `spec_vs_built` remains a documentation-
+#   only rule, carried by review's own conduct and by human/reviewer
+#   scrutiny of `review.md`, not by this hook.
 #
-#   Rule 0 (repo-local contract presence): before either rule above runs,
-#   this gate resolves exactly one root — the git root of the current
-#   working directory — and checks that root for
+#   Rule 0 (repo-local contract presence): before Rule 1 runs, this gate
+#   resolves exactly one root — the git root of the current working
+#   directory — and checks that root for
 #   docs/specs/role-handoff-contract.md. If that file is absent, every
 #   handoff-protocol-relevant tool call this gate covers is refused with a
 #   plain message that this repo has no collaboration contract yet, rather
 #   than silently passing. This gate never walks to a parent or sibling
 #   repo and never compares against another repo's git history.
+#
+#   NOTE ON STATE PATH SCOPING: this gate is still hardcoded to a single
+#   flat `review-record.md` (state_name default, REVIEW_RECORD_NAME env
+#   var), not the contract's subject-scoped
+#   `docs/reports/records/<subject>/review.md`. Resolving that gap (how
+#   `<subject>` is determined at gate-run time — env var, single
+#   in-flight-subject convention, or scanning) is deferred, per the landing
+#   proposal, as separate follow-on work; this rewrite does not change
+#   Rule 1's path behavior.
 #
 # FAILS CLOSED: malformed stdin, an unparseable payload, an unreadable
 # tool_input, or any input this script does not recognize the shape of
@@ -178,58 +195,6 @@ if not os.path.isfile(contract_path):
         "(docs/specs/role-handoff-contract.md is absent at %s). No handoff-protocol action may proceed "
         "until this repo's own contract file exists." % root_real
     )
-
-# --- Rule 2: standing refusal to read an artifact outside review's ---------
-# --- accepted-kind set, by declared `kind`, not by path ---------------------
-ACCEPTED_KINDS = {"build-proposal", "hypothesis", "feasibility-record"}
-KIND_RE = re.compile(r"^kind:\s*(\S+)\s*$", re.M)
-
-def declared_kind(resolved_path):
-    """Returns the frontmatter `kind:` value of an existing file at
-    resolved_path, or None if the file doesn't exist, isn't readable, or
-    carries no such field."""
-    if not resolved_path or not os.path.isfile(resolved_path):
-        return None
-    try:
-        with open(resolved_path, encoding="utf-8-sig") as fh:
-            text = fh.read(1 << 20)
-    except (OSError, UnicodeDecodeError):
-        return None
-    m = KIND_RE.search(text)
-    return m.group(1) if m else None
-
-def refuse_if_unaccepted_kind(tool_label, path_str):
-    resolved = resolve(path_str)
-    kind = declared_kind(resolved)
-    if kind is not None and kind not in ACCEPTED_KINDS:
-        refuse(
-            "review-cycle: refused — %s targets %r, which declares kind %r. The review role accepts only "
-            "{build-proposal, hypothesis, feasibility-record}; any other declared kind is refused by kind, not "
-            "by path, per docs/specs/role-handoff-contract.md section 3's accept/refuse row for review." % (tool_label, path_str, kind)
-        )
-
-READ_PATH_KEYS = {
-    "Read": ["file_path"],
-    "Grep": ["path"],
-    "Glob": ["path"],
-    "NotebookEdit": ["notebook_path"],
-}
-
-if tool in READ_PATH_KEYS:
-    for key in READ_PATH_KEYS[tool]:
-        val = tool_input.get(key)
-        if isinstance(val, str) and val:
-            refuse_if_unaccepted_kind(tool, val)
-
-if tool == "Bash":
-    command = tool_input.get("command")
-    if not isinstance(command, str) or not command:
-        refuse("review-cycle: refused — the transition rules could not be loaded: a Bash call arrived with no readable command. Refusing rather than allowing an uninspectable action.")
-
-    for token in re.split(r"[\s|;&<>()\"']+", command):
-        if not token or token.startswith("-"):
-            continue
-        refuse_if_unaccepted_kind("this Bash command", token)
 
 # --- Rule 1: transition-table gate on writes reaching the state file ------
 # Candidate write-target paths for this call, however they get there. Also

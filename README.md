@@ -113,52 +113,76 @@ silently passed. This section is not a pinned excerpt of any particular
 contract; it describes only how the review role behaves against whatever
 contract the work repo carries.
 
-### ACCEPTS
+### WAKES-ON
 
-`build-proposal` (the change) and the `hypothesis` / `feasibility-record`
-that specify what the change was supposed to do. Must refuse any artifact
-declaring `kind` in `{hypothesis, build-proposal}` when read for its
-narrative body (`## Request`, `## Constraints`, `## What will be done`,
-`## Out of scope`) — refusal by declared `kind`, not by path. Review may
-still read a `build-proposal`'s `files:` frontmatter field to resolve the
-diff's scope.
+review wakes on any commit landed by coding, per contract §3's table.
 
-### WHERE UPSTREAM LIVES
+This is a change in kind, not just wording. v1 asked "may review read
+this artifact at all" — v2 asks "does the board's current state satisfy
+review's trigger row." Those are different questions answered by
+different mechanisms: §4 governs the first (now unconditionally yes for
+every role), §3 governs the second.
 
-- `build-proposal` — `docs/proposals/<date>-build-<slug>.md` (`files:`
-  frontmatter field only).
-- `hypothesis` — `docs/proposals/<date>-<slug>.md`.
-- `feasibility-record` — `docs/reports/records/<subject>/feasibility.md`.
+### READ / DEPENDS-ON / NEVER-OVERWRITE
 
-Both `hypothesis` and `feasibility-record` are read for their specification
-content, not as narrative intent.
+**READ (broad).** Per contract §4: review may read every other role's
+record unconditionally, for context, including `hypothesis`'s and
+`build-proposal`'s narrative sections (`## Request`, `## Constraints`,
+`## What will be done`, `## Out of scope`) freely — reading them is never
+itself a violation.
 
-### PRODUCES
+**DEPENDS-ON (narrow, contract §4).** Review depends on `build-proposal`
+(the change) to decide what should exist. For a finding's `spec_vs_built`
+judgment specifically, review may depend only on the finished change as
+built and the `build-proposal`'s stated `files:`/sections — never on
+`hypothesis`'s aspirational narrative standing in for what was actually
+specified. Per the contract's own words: "Reading the narrative is
+allowed; building `spec_vs_built` on it alone is not."
 
-- `review-record` at `docs/reports/records/<subject>/review.md`. Required
-  fields: role status (`idle,scoped,auditing,draft-reported,reported`),
-  plus the common header, including `handoff_status: provisional | final`.
-- Inline `finding` blocks within `review-record`. Required fields:
-  `requirement`, `verdict` (`Present|Surface|Absent|Incorrect|Unverifiable`),
-  `evidence`, `rationale`, `spec_vs_built` (required only when
-  `verdict: Incorrect`).
-- `finding` is the kind `coding` now accepts as its route back into a fix
-  (a `verdict: Absent|Incorrect|Surface` finding closes the review -> coding
-  -> qa cycle); the `review-record` as a whole stays out of coding's scope
-  — only its inline `finding` blocks are accepted there.
+**NEVER-OVERWRITE (contract §11, unchanged from v1 §7).** Review writes
+only `docs/reports/records/<subject>/review.md` (`kind: review-record`,
+including inline `finding` blocks). An existing record already at a path
+review does not own under `docs/reports/records/` is refused to write,
+reported as a conflict, and never overwritten — this rule is unchanged by
+v2, only its section label moves.
 
-### STOPS
+### Blackboard record spec
 
-- Upstream stale at role entry: the recorded `sha` for whichever of
-  `build-proposal`/`hypothesis`/`feasibility-record` was read no longer
-  matches that path's current `sha` — stop before doing further work, ask
-  the user.
-- An existing record already at a path review does not own under
-  `docs/reports/records/` — refuse to write, report the conflict, never
-  overwrite.
-- Input carrying `handoff_status: provisional` — refuse to treat it as
-  final baseline input for a verdict or as the recorded `upstream` entry
-  for the staleness check.
+`review-record` at `docs/reports/records/<subject>/review.md`. Its
+`loop_state` vocabulary, quoted verbatim from contract §2's table:
+`idle,scoped,auditing,draft-reported,reported`. Per the same table's
+"required fields beyond common header" column for `review-record`: **no
+required fields beyond the common header** (contract §1) — this is a
+narrowing from v1, which additionally required `handoff_status:
+provisional | final`; that field does not appear in the v2 table row and
+is dropped here. (Open question for whoever lands a future revision:
+whether to keep it as a review-local extension — not settled by this
+proposal.)
+
+### Finding back-edge participation
+
+Review is a major finding producer. Findings addressed to coding (and
+potentially other roles, since v2 generalizes the finding mechanism to
+all six roles per contract §5) live as inline blocks within `review.md`
+itself — never as separate files — per contract §2's `finding` row:
+"inline block within the addressing role's own record."
+
+Required finding fields, quoted from the same table row: `requirement`,
+`verdict` (`Present|Surface|Absent|Incorrect|Unverifiable`), `evidence`,
+`rationale`, `spec_vs_built` (required only when `verdict: Incorrect`),
+`addressed_to: <role>`, `severity: blocking|advisory`.
+
+Per contract §5's response schema: when review itself closes a finding
+addressed to review, its `review.md` must carry a `finding-response`
+entry with the finding reference, the action taken or decline reason,
+and — when code changed — proof of the fix.
+
+### Loop-termination rule (contract §6)
+
+A wake is consumed only by writing the resulting record entry (a
+`loop_state` change, a new `finding`, or equivalent); an unchanged board
+wakes no one. A review session's mere reading of a changed artifact is
+never, by itself, sufficient handoff activity.
 
 ## Kill switch
 
