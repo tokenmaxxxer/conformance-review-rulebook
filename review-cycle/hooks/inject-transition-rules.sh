@@ -94,20 +94,29 @@ for line in rules_text.splitlines():
 if not rows:
     fail("transition-rules.md at %s has no parseable rows." % rules_file)
 
-try:
-    with open(state_path, encoding="utf-8-sig") as fh:
-        state_text = fh.read(1 << 20)
-except OSError as e:
-    fail("state file %s could not be read (%s)." % (state_path, e))
+NONE_STATE = "(none)"
 
-m = re.findall(r"^status:\s*(.*?)\s*(?:#.*)?$", state_text, re.M)
-if not m:
-    fail("state file %s has no `status:` field." % state_path)
-if len(m) > 1:
-    fail("state file %s has a duplicated `status:` field." % state_path)
-status = m[0].strip()
-if not status:
-    fail("state file %s has an empty `status:` field." % state_path)
+if not os.path.exists(state_path):
+    # Missing state file is a normal state, not an error: per the
+    # bootstrap convention the current state is the synthetic literal
+    # "(none)". Do not emit the "could not be loaded" failure block for
+    # this case.
+    status = NONE_STATE
+else:
+    try:
+        with open(state_path, encoding="utf-8-sig") as fh:
+            state_text = fh.read(1 << 20)
+    except OSError as e:
+        fail("state file %s could not be read (%s)." % (state_path, e))
+
+    m = re.findall(r"^status:\s*(.*?)\s*(?:#.*)?$", state_text, re.M)
+    if not m:
+        fail("state file %s has no `status:` field." % state_path)
+    if len(m) > 1:
+        fail("state file %s has a duplicated `status:` field." % state_path)
+    status = m[0].strip()
+    if not status:
+        fail("state file %s has an empty `status:` field." % state_path)
 
 matching = [r for r in rows if r[0] == status]
 

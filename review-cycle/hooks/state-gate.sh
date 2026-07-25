@@ -318,14 +318,21 @@ if rows_err:
         "this is fixed." % rows_err
     )
 
+NONE_STATE = "(none)"
+
 def read_state_file():
+    """Returns (text, existed). text is None if the file could not be read
+    despite existing (I/O error, decode error) — a real error condition.
+    existed is False when the path simply does not exist — NOT an error;
+    per the bootstrap convention, a missing state file means the current
+    state is the synthetic literal "(none)"."""
     if not state_path_real or not os.path.exists(state_path_real):
-        return None
+        return None, False
     try:
         with open(state_path_real, encoding="utf-8-sig") as fh:
-            return fh.read(1 << 20)
+            return fh.read(1 << 20), True
     except (OSError, UnicodeDecodeError):
-        return None
+        return None, True
 
 def current_status(text):
     m = re.findall(r"^status:\s*(.*?)\s*(?:#.*)?$", text, re.M)
@@ -334,19 +341,24 @@ def current_status(text):
     val = m[0].strip()
     return val or None
 
-cur_text = read_state_file()
-if cur_text is None:
+cur_text, existed = read_state_file()
+if not existed:
+    # Missing state file: this is the synthetic initial state "(none)",
+    # not an error. The write that creates the state file is allowed
+    # exactly when "(none) -> <target>" is a row in transition-rules.md.
+    cur_status = NONE_STATE
+elif cur_text is None:
     refuse(
-        "review-cycle: refused — the transition rules could not be loaded: %s could not be read (missing or "
-        "unreadable), so the current state is unknown. No transition may be made until this is fixed." % state_name
+        "review-cycle: refused — the transition rules could not be loaded: %s could not be read (unreadable), "
+        "so the current state is unknown. No transition may be made until this is fixed." % state_name
     )
-
-cur_status = current_status(cur_text)
-if cur_status is None:
-    refuse(
-        "review-cycle: refused — the transition rules could not be loaded: %s's `status` field is missing, "
-        "duplicated, or unparseable. No transition may be made until this is fixed." % state_name
-    )
+else:
+    cur_status = current_status(cur_text)
+    if cur_status is None:
+        refuse(
+            "review-cycle: refused — the transition rules could not be loaded: %s's `status` field is missing, "
+            "duplicated, or unparseable. No transition may be made until this is fixed." % state_name
+        )
 
 # For Write/Edit we can read the ATTEMPTED content directly. For Bash (or an
 # unresolvable target), the resulting content is not knowable before the
