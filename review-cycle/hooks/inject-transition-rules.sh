@@ -27,9 +27,6 @@ STATE_FILE_NAME="${REVIEW_RECORD_NAME:-review-record.md}"
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
 RULES_FILE="${REVIEW_TRANSITION_RULES:-$HOOK_DIR/transition-rules.md}"
 
-root="${CLAUDE_PROJECT_DIR:-$PWD}"
-root="$(cd "$root" 2>/dev/null && pwd -P)" || root="$PWD"
-
 payload="$(cat 2>/dev/null || true)"
 
 fail_block() {
@@ -46,6 +43,23 @@ EOF
 }
 
 command -v python3 >/dev/null 2>&1 || fail_block "python3 is not available, so transition-rules.md and $STATE_FILE_NAME cannot be parsed."
+
+# Root is discovered by walking UP from the hook's own on-disk location to
+# the nearest enclosing `.git`, never from the process cwd or
+# CLAUDE_PROJECT_DIR — this must resolve to the same state file that
+# state-gate.sh guards, regardless of invoking cwd.
+root=""
+dir="$HOOK_DIR"
+while :; do
+  if [ -e "$dir/.git" ]; then
+    root="$dir"
+    break
+  fi
+  parent="$(dirname "$dir")"
+  [ "$parent" = "$dir" ] && break
+  dir="$parent"
+done
+[ -n "$root" ] || fail_block "no enclosing .git found by walking up from this hook's own directory ($HOOK_DIR)."
 
 [ -f "$RULES_FILE" ] || fail_block "transition-rules.md not found at $RULES_FILE."
 [ -r "$RULES_FILE" ] || fail_block "transition-rules.md at $RULES_FILE is not readable."

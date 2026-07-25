@@ -68,10 +68,29 @@ if [ -z "$payload" ]; then
   exit 2
 fi
 
-root="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_name="${REVIEW_RECORD_NAME:-review-record.md}"
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
 rules_file="${REVIEW_TRANSITION_RULES:-$HOOK_DIR/transition-rules.md}"
+
+# Root is discovered by walking UP from the hook's own on-disk location to
+# the nearest enclosing `.git`, never from the process cwd or
+# CLAUDE_PROJECT_DIR — a hook invoked with a cwd outside the repo must still
+# resolve to, and guard, this repo's own state file.
+root=""
+dir="$HOOK_DIR"
+while :; do
+  if [ -e "$dir/.git" ]; then
+    root="$dir"
+    break
+  fi
+  parent="$(dirname "$dir")"
+  [ "$parent" = "$dir" ] && break
+  dir="$parent"
+done
+if [ -z "$root" ]; then
+  echo "review-cycle: refused — the transition rules could not be loaded: no enclosing .git found by walking up from this hook's own directory ($HOOK_DIR)." >&2
+  exit 2
+fi
 
 REVIEW_GATE_PAYLOAD="$payload" REVIEW_GATE_ROOT="$root" REVIEW_GATE_STATE_NAME="$state_name" REVIEW_GATE_RULES_FILE="$rules_file" python3 <<'PY'
 import json
