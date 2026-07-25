@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Gate tests for review-cycle/hooks/state-gate.sh.
+#
+# Covers, per docs/proposals/2026-07-29-same-state-gate-and-state-file-policy.md:
+#  (a) a same-state write to the state file on a state with NO self-loop
+#      row must be DENIED.
+#  (b) a same-state write to the state file on a state that DOES have a
+#      self-loop row (auditing|auditing, draft-reported|draft-reported)
+#      must be ALLOWED.
+#  (c) a normal table-legal transition must be ALLOWED.
+#  (d) a transition absent from the table must be DENIED.
+#  (e) a Bash-shaped write whose target resolves to the state file is
+#      judged the same as the Write-shaped one.
+#  (f) malformed hook JSON is DENIED with visible output, never a silent
+#      exit 0.
+set -uo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+GATE="$HOOK_DIR/state-gate.sh"
+
+WORKDIR="$(mktemp -d)"
+trap 'rm -rf "$WORKDIR"' EXIT
+
+pass=0
+fail=0
+
+run_gate() {
+  # $1 = root dir, $2 = payload json
+  CLAUDE_PROJECT_DIR="$1" bash "$GATE" <<<"$2"
+}
+
+expect_deny() {
+  local name="$1" root="$2" payload="$3"
+  local out rc
+  out="$(run_gate "$root" "$payload" 2>&1)"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL: $name — expected deny (non-zero exit), got exit 0. Output: $out"
+    fail=$((fail+1))
+  else
+    echo "PASS: $name (exit $rc)"
+    pass=$((pass+1))
+  fi
+}
+
+expect_allow() {
+  local name="$1" root="$2" payload="$3"
+  local out rc
+  out="$(run_gate "$root" "$payload" 2>&1)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL: $name — expected allow (exit 0), got exit $rc. Output: $out"
+    fail=$((fail+1))
+  else
+    echo "PASS: $name"
+    pass=$((pass+1))
+  fi
+}
+
+new_root() {
+  local d
+  d="$(mktemp -d -p "$WORKDIR")"
+  echo "$d"
+}
+
+write_state() {
+  # $1 = root, $2 = status
+  printf 'status: %s\n' "$2" > "$1/review-record.md"
+}
+
+# --- (a) same-state write, no self-loop row (idle | idle) -> DENY --------
+root="$(new_root)"
+write_state "$root" "idle"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: idle\n"}}
+JSON
+)
+expect_deny "(a) same-state idle->idle, no self-loop row" "$root" "$payload"
+
+# --- (b) same-state write, HAS self-loop row (auditing | auditing) -> ALLOW
+root="$(new_root)"
+write_state "$root" "auditing"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: auditing\nnote: evidence requested\n"}}
+JSON
+)
+expect_allow "(b) same-state auditing->auditing, has self-loop row" "$root" "$payload"
+
+root="$(new_root)"
+write_state "$root" "draft-reported"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: draft-reported\nnote: dispute logged\n"}}
+JSON
+)
+expect_allow "(b) same-state draft-reported->draft-reported, has self-loop row" "$root" "$payload"
+
+# --- (c) normal table-legal transition -> ALLOW ---------------------------
+root="$(new_root)"
+write_state "$root" "scoped"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: auditing\n"}}
+JSON
+)
+expect_allow "(c) legal transition scoped->auditing" "$root" "$payload"
+
+# --- (d) transition absent from the table -> DENY -------------------------
+root="$(new_root)"
+write_state "$root" "idle"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: reported\n"}}
+JSON
+)
+expect_deny "(d) illegal transition idle->reported" "$root" "$payload"
+
+# --- (e) Bash-shaped write resolving to the state file, judged the same --
+# (e1) Bash write reaching a state with a legal outgoing transition -> ALLOW
+root="$(new_root)"
+write_state "$root" "scoped"
+payload=$(cat <<JSON
+{"tool_name":"Bash","tool_input":{"command":"printf 'status: auditing\\n' > $root/review-record.md"}}
+JSON
+)
+expect_allow "(e1) Bash write reaching state file, legal outgoing transition exists" "$root" "$payload"
+
+# (e2) Bash write reaching a state with NO legal outgoing transition -> DENY
+root="$(new_root)"
+write_state "$root" "reported"
+payload=$(cat <<JSON
+{"tool_name":"Bash","tool_input":{"command":"printf 'status: idle\\n' > $root/review-record.md"}}
+JSON
+)
+expect_deny "(e2) Bash write reaching state file, no legal outgoing transition (terminal state)" "$root" "$payload"
+
+# --- (f) malformed hook JSON -> DENY, visible output, never silent -------
+root="$(new_root)"
+out_f="$(run_gate "$root" '{not valid json' 2>&1)"
+rc_f=$?
+if [ "$rc_f" -eq 0 ]; then
+  echo "FAIL: (f) malformed JSON — expected deny, got exit 0. Output: $out_f"
+  fail=$((fail+1))
+elif [ -z "$out_f" ]; then
+  echo "FAIL: (f) malformed JSON — denied (exit $rc_f) but produced no visible output"
+  fail=$((fail+1))
+else
+  echo "PASS: (f) malformed JSON denied with visible output (exit $rc_f)"
+  pass=$((pass+1))
+fi
+
+echo
+echo "== $pass passed, $fail failed =="
+[ "$fail" -eq 0 ]

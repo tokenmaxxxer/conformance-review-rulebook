@@ -4,3 +4,8 @@
 # Local settings backup produced by a CLI-less install.sh run against this
 # repo itself (e.g. during manual testing).
 *.bak
+
+# The review role's state file is runtime state produced during a review
+# session, not a design artifact; it should never be committed into the
+# plugin repository itself.
+review-record.md
