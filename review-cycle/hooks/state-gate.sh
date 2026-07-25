@@ -21,16 +21,29 @@
 #   synthetic starting state). Adding `draft-reported` therefore required
 #   no change to this script's logic, only to transition-rules.md.
 #
-#   Rule 2 (read refusal): in EVERY state, a tool call whose target names a
-#   proposal/intent/scratch path — docs/proposals/**, or a path whose name
-#   contains "proposal", "intent", "notes", or "scratch" in any casing — is
-#   refused outright. This role is handed only the change and the
-#   specification (docs/specs/agent-roles.md, `review`'s "Given to start"),
-#   deliberately without the building agent's proposal prose; a path is the
-#   only thing this gate can check mechanically, so it refuses on path shape
-#   regardless of tool: Read, Grep, Glob, NotebookEdit's notebook_path, and
-#   Bash commands (cat, less, grep, sed -n, head, tail, ...) that name such a
-#   path as an operand are all covered the same way.
+#   Rule 2 (read refusal): in EVERY state, a tool call whose target resolves
+#   to an existing file declaring a frontmatter `kind:` field outside this
+#   role's accepted-kind set — {build-proposal, hypothesis,
+#   feasibility-record}, per docs/specs/role-handoff-contract.md section 3's
+#   accept/refuse row for `review` — is refused outright. This replaces the
+#   former path-shaped rule (a `docs/proposals(/|$)` regex plus a
+#   proposal/intent/scratch filename check), which broke the moment an
+#   intent-bearing kind moved out of `docs/proposals/`. Refusal is now by
+#   declared `kind`, not by path, and is checked regardless of tool: Read,
+#   Grep, Glob, NotebookEdit's notebook_path, and Bash commands (cat, less,
+#   grep, sed -n, head, tail, ...) that name such a path as an operand are
+#   all covered the same way. A target with no readable frontmatter `kind:`
+#   field is not refused by this rule (nothing to check it against).
+#
+#   Rule 0 (contract SHA pin): before either rule above runs, this gate
+#   compares the contract SHA pinned in this repo's README.md
+#   ("## Handoff protocol (contract SHA `<sha>`)") against the current
+#   commit that touched docs/specs/role-handoff-contract.md in the
+#   enclosing tokenmaxxxer root repo (`git log -1 --format=%H -- <path>`,
+#   the same mechanism docs/specs/role-handoff-contract.md section 4 uses
+#   for its own staleness check). A mismatch, or either SHA being
+#   unobtainable, refuses every tool call this gate covers until the
+#   pinned excerpt is refreshed.
 #
 # FAILS CLOSED: malformed stdin, an unparseable payload, an unreadable
 # tool_input, or any input this script does not recognize the shape of
@@ -153,35 +166,107 @@ def resolve(path_str):
     real = posixpath.normpath(os.path.realpath(absu).replace("\\", "/"))
     return real
 
-# --- Rule 2: standing refusal to read the building agent's intent --------
-INTENT_PATH_RE = re.compile(r"(^|/)docs/proposals(/|$)", re.I)
-INTENT_NAME_RE = re.compile(r"(proposal|intent|scratch|notes)", re.I)
+# --- Rule 0: contract SHA pin -------------------------------------------
+# Walk up past this repo's own root to the enclosing tokenmaxxxer root repo
+# (the one holding docs/specs/role-handoff-contract.md), mirroring the same
+# "walk up to nearest enclosing .git" approach used above for this repo's
+# own root, continued one .git further out.
+def find_enclosing_git(start_dir):
+    d = start_dir
+    while True:
+        parent = posixpath.dirname(d)
+        if parent == d:
+            return None
+        if os.path.isdir(posixpath.join(parent, ".git")):
+            return parent
+        d = parent
 
-def looks_like_intent(path_str):
-    if not isinstance(path_str, str) or not path_str:
-        return False
-    norm = path_str.replace("\\", "/")
-    if INTENT_PATH_RE.search(norm):
-        return True
-    base = posixpath.basename(norm)
-    return bool(INTENT_NAME_RE.search(base))
+contract_root = find_enclosing_git(root_real)
+pinned_sha = None
+readme_path = posixpath.join(root_real, "README.md")
+try:
+    with open(readme_path, encoding="utf-8-sig") as fh:
+        readme_text = fh.read(1 << 20)
+    m = re.search(r"Handoff protocol \(contract SHA `([0-9a-fA-F]{7,40})`\)", readme_text)
+    if m:
+        pinned_sha = m.group(1)
+except OSError:
+    pinned_sha = None
+
+if pinned_sha is None:
+    refuse(
+        "review-cycle: refused — the transition rules could not be loaded: no pinned contract SHA could be read "
+        "from README.md's \"Handoff protocol\" section header. No tool call may proceed until this is fixed."
+    )
+if contract_root is None:
+    refuse(
+        "review-cycle: refused — the transition rules could not be loaded: no enclosing tokenmaxxxer root repo "
+        "(a further .git above this repo's own root) could be found to check docs/specs/role-handoff-contract.md's "
+        "current SHA against the pinned SHA %r." % pinned_sha
+    )
+
+import subprocess
+try:
+    current_sha = subprocess.run(
+        ["git", "-C", contract_root, "log", "-1", "--format=%H", "--", "docs/specs/role-handoff-contract.md"],
+        capture_output=True, text=True, timeout=10,
+    ).stdout.strip()
+except (OSError, subprocess.SubprocessError):
+    current_sha = ""
+
+if not current_sha:
+    refuse(
+        "review-cycle: refused — the transition rules could not be loaded: docs/specs/role-handoff-contract.md's "
+        "current SHA could not be determined via git log in %s. No tool call may proceed until this is fixed." % contract_root
+    )
+if current_sha != pinned_sha:
+    refuse(
+        "review-cycle: refused — docs/specs/role-handoff-contract.md has changed since this rulebook's "
+        "\"Handoff protocol\" excerpt was pinned (pinned at %s, now at %s). The excerpt in README.md must be "
+        "refreshed and re-pinned to the current SHA before this role may act." % (pinned_sha, current_sha)
+    )
+
+# --- Rule 2: standing refusal to read an artifact outside review's ---------
+# --- accepted-kind set, by declared `kind`, not by path ---------------------
+ACCEPTED_KINDS = {"build-proposal", "hypothesis", "feasibility-record"}
+KIND_RE = re.compile(r"^kind:\s*(\S+)\s*$", re.M)
+
+def declared_kind(resolved_path):
+    """Returns the frontmatter `kind:` value of an existing file at
+    resolved_path, or None if the file doesn't exist, isn't readable, or
+    carries no such field."""
+    if not resolved_path or not os.path.isfile(resolved_path):
+        return None
+    try:
+        with open(resolved_path, encoding="utf-8-sig") as fh:
+            text = fh.read(1 << 20)
+    except (OSError, UnicodeDecodeError):
+        return None
+    m = KIND_RE.search(text)
+    return m.group(1) if m else None
+
+def refuse_if_unaccepted_kind(tool_label, path_str):
+    resolved = resolve(path_str)
+    kind = declared_kind(resolved)
+    if kind is not None and kind not in ACCEPTED_KINDS:
+        refuse(
+            "review-cycle: refused — %s targets %r, which declares kind %r. The review role accepts only "
+            "{build-proposal, hypothesis, feasibility-record}; any other declared kind is refused by kind, not "
+            "by path, per docs/specs/role-handoff-contract.md section 3's accept/refuse row for review." % (tool_label, path_str, kind)
+        )
 
 READ_PATH_KEYS = {
     "Read": ["file_path"],
-    "Grep": ["path", "pattern"],
-    "Glob": ["path", "pattern"],
+    "Grep": ["path"],
+    "Glob": ["path"],
     "NotebookEdit": ["notebook_path"],
 }
 
 if tool in READ_PATH_KEYS:
     for key in READ_PATH_KEYS[tool]:
         val = tool_input.get(key)
-        if looks_like_intent(val):
-            refuse(
-                "review-cycle: refused — %s targets %r, which looks like the building agent's proposal, intent, "
-                "notes, or scratch content. The review role works only from the change and the specification it "
-                "was handed, never from the building agent's stated intent, in any state." % (tool, val)
-            )
+        if isinstance(val, str) and val:
+            refuse_if_unaccepted_kind(tool, val)
 
 if tool == "Bash":
     command = tool_input.get("command")
@@ -189,12 +274,9 @@ if tool == "Bash":
         refuse("review-cycle: refused — the transition rules could not be loaded: a Bash call arrived with no readable command. Refusing rather than allowing an uninspectable action.")
 
     for token in re.split(r"[\s|;&<>()\"']+", command):
-        if token and looks_like_intent(token):
-            refuse(
-                "review-cycle: refused — this Bash command references %r, which looks like the building agent's "
-                "proposal, intent, notes, or scratch content. The review role never reads that, in any state, "
-                "regardless of which tool or shell construct is used to get at it." % token
-            )
+        if not token or token.startswith("-"):
+            continue
+        refuse_if_unaccepted_kind("this Bash command", token)
 
 # --- Rule 1: transition-table gate on writes reaching the state file ------
 # Candidate write-target paths for this call, however they get there. Also

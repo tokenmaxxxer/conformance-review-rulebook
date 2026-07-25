@@ -103,6 +103,60 @@ frontmatter `status` field holds the state (`idle`, `scoped`, `auditing`,
 `verdict:`. See `docs/specs/state-machine.md` for the exact shape and every
 gate rule.
 
+## Handoff protocol (contract SHA `2affe5db7dfb285abaa2860d3004edb3f97c9aec`)
+
+Excerpt only — review's own rows from the shared, cross-repo
+`docs/specs/role-handoff-contract.md` (root `tokenmaxxxer` repo), pinned at
+commit `2affe5db7dfb285abaa2860d3004edb3f97c9aec`. Not a restatement of the
+full contract; read the contract itself for anything not covered here.
+
+### ACCEPTS
+
+`build-proposal` (the change) and the `hypothesis` / `feasibility-record`
+that specify what the change was supposed to do. Must refuse any artifact
+declaring `kind` in `{hypothesis, build-proposal}` when read for its
+narrative body (`## Request`, `## Constraints`, `## What will be done`,
+`## Out of scope`) — refusal by declared `kind`, not by path. Review may
+still read a `build-proposal`'s `files:` frontmatter field to resolve the
+diff's scope.
+
+### WHERE UPSTREAM LIVES
+
+- `build-proposal` — `docs/proposals/<date>-build-<slug>.md` (`files:`
+  frontmatter field only).
+- `hypothesis` — `docs/proposals/<date>-<slug>.md`.
+- `feasibility-record` — `docs/reports/records/<subject>/feasibility.md`.
+
+Both `hypothesis` and `feasibility-record` are read for their specification
+content, not as narrative intent.
+
+### PRODUCES
+
+- `review-record` at `docs/reports/records/<subject>/review.md`. Required
+  fields: role status (`idle,scoped,auditing,draft-reported,reported`),
+  plus the common header, including `handoff_status: provisional | final`.
+- Inline `finding` blocks within `review-record`. Required fields:
+  `requirement`, `verdict` (`Present|Surface|Absent|Incorrect|Unverifiable`),
+  `evidence`, `rationale`, `spec_vs_built` (required only when
+  `verdict: Incorrect`).
+- `finding` is the kind `coding` now accepts as its route back into a fix
+  (a `verdict: Absent|Incorrect|Surface` finding closes the review -> coding
+  -> qa cycle); the `review-record` as a whole stays out of coding's scope
+  — only its inline `finding` blocks are accepted there.
+
+### STOPS
+
+- Upstream stale at role entry: the recorded `sha` for whichever of
+  `build-proposal`/`hypothesis`/`feasibility-record` was read no longer
+  matches that path's current `sha` — stop before doing further work, ask
+  the user.
+- An existing record already at a path review does not own under
+  `docs/reports/records/` — refuse to write, report the conflict, never
+  overwrite.
+- Input carrying `handoff_status: provisional` — refuse to treat it as
+  final baseline input for a verdict or as the recorded `upstream` entry
+  for the staleness check.
+
 ## Kill switch
 
 ```sh
