@@ -326,6 +326,13 @@ if rows_err:
 
 NONE_STATE = "(none)"
 
+known_states = set()
+for r in rows:
+    if r[0] != NONE_STATE:
+        known_states.add(r[0])
+    if r[1] != NONE_STATE:
+        known_states.add(r[1])
+
 def read_state_file():
     """Returns (text, existed). text is None if the file could not be read
     despite existing (I/O error, decode error) — a real error condition.
@@ -344,7 +351,7 @@ def current_status(text):
     m = re.findall(r"^status:\s*(.*?)\s*(?:#.*)?$", text, re.M)
     if len(m) != 1:
         return None
-    val = m[0].strip()
+    val = m[0].strip("\r\n \t")
     return val or None
 
 cur_text, existed = read_state_file()
@@ -364,6 +371,16 @@ else:
         refuse(
             "review-cycle: refused — the transition rules could not be loaded: %s's `status` field is missing, "
             "duplicated, or unparseable. No transition may be made until this is fixed." % state_name
+        )
+    if cur_status not in known_states:
+        # An existing state file whose value is the synthetic "(none)"
+        # sentinel, empty, or any string outside this role's known-state
+        # set is not a legitimate old state — it is the gate's own input
+        # failing to load, never the bootstrap case (that requires a
+        # genuinely absent file, already handled above via `existed`).
+        refuse(
+            "review-cycle: refused — the transition rules could not be loaded: %s's `status` field is %r, which "
+            "is not a member of this role's known-state set. No transition may be made until this is fixed." % (state_name, cur_status)
         )
 
 # For Write/Edit we can read the ATTEMPTED content directly. For Bash (or an

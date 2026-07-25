@@ -96,6 +96,13 @@ if not rows:
 
 NONE_STATE = "(none)"
 
+known_states = set()
+for r in rows:
+    if r[0] != NONE_STATE:
+        known_states.add(r[0])
+    if r[1] != NONE_STATE:
+        known_states.add(r[1])
+
 if not os.path.exists(state_path):
     # Missing state file is a normal state, not an error: per the
     # bootstrap convention the current state is the synthetic literal
@@ -114,9 +121,17 @@ else:
         fail("state file %s has no `status:` field." % state_path)
     if len(m) > 1:
         fail("state file %s has a duplicated `status:` field." % state_path)
-    status = m[0].strip()
+    status = m[0].strip("\r\n \t")
     if not status:
         fail("state file %s has an empty `status:` field." % state_path)
+    if status not in known_states:
+        # A value of "(none)" (the gate's own bootstrap sentinel), or any
+        # other string outside this role's known-state set, read from an
+        # EXISTING state file is a broken input — never rendered as the
+        # current state to inject a prompt about. This matches
+        # state-gate.sh's refusal so the injector and the gate never
+        # disagree on the same file.
+        fail("state file %s has `status: %s`, which is not a member of this role's known-state set." % (state_path, status))
 
 matching = [r for r in rows if r[0] == status]
 
