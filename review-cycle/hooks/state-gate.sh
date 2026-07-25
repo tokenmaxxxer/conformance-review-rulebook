@@ -186,7 +186,7 @@ if tool == "Bash":
 candidates = []
 bash_unresolvable = False
 
-if tool in ("Write", "Edit"):
+if tool in ("Write", "Edit", "MultiEdit"):
     fp = tool_input.get("file_path")
     if isinstance(fp, str) and fp:
         candidates.append(fp)
@@ -390,8 +390,38 @@ else:
 # candidate, and the call is allowed only if the current state has at
 # least one outgoing row — the write is not required to resolve to one
 # specific `to` for this coarser case, since the gate cannot see it.
-if tool in ("Write", "Edit"):
-    content = tool_input.get("content") if tool == "Write" else tool_input.get("new_string")
+if tool in ("Write", "Edit", "MultiEdit"):
+    if tool == "Write":
+        content = tool_input.get("content")
+    elif tool == "Edit":
+        content = tool_input.get("new_string")
+    else:
+        # MultiEdit: apply each edit's old_string/new_string pair against
+        # the current on-disk content, in order, the same way ops-cycle
+        # does — never against a single new_string field, which MultiEdit
+        # does not carry at the top level.
+        edits = tool_input.get("edits")
+        content = None
+        if isinstance(edits, list) and cur_text is not None:
+            text = cur_text
+            ok = True
+            for e in edits:
+                if not isinstance(e, dict):
+                    ok = False
+                    break
+                o, n = e.get("old_string"), e.get("new_string")
+                if not isinstance(o, str) or not isinstance(n, str):
+                    ok = False
+                    break
+                if o == "":
+                    text = n
+                    continue
+                if o not in text:
+                    ok = False
+                    break
+                text = text.replace(o, n, 1)
+            if ok:
+                content = text
     if not isinstance(content, str):
         refuse(
             "review-cycle: refused — this transition is not in the table: could not read the attempted new "
