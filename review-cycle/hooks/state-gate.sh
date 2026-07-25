@@ -192,23 +192,94 @@ elif tool == "NotebookEdit":
     pass  # notebooks are never the review record; nothing to add here.
 elif tool == "Bash":
     command = tool_input.get("command")
-    # This is deliberately name-based, not syntax-based: parsing arbitrary
-    # shell for exact redirection targets is not reliable, and the
-    # consequence of under-matching here is silently letting a state-file
-    # write through a shell construct — exactly the hole
-    # docs/specs/agent-roles.md's Part 3 rule exists to close. So: if the
-    # review record's basename appears anywhere in the command string
-    # alongside any write-shaped construct (redirection, tee, cp, mv,
-    # sed -i, perl -i, dd, install, truncate, >|, printf ... >), treat this
-    # as a candidate write to it and gate it — a false positive here only
-    # costs an extra "state this transition's approval" turn; a false
-    # negative would be a bypass.
-    write_indicators = re.compile(
-        r"(>>?|>\||\btee\b|\bcp\b|\bmv\b|\bsed\b[^\n]*-i|\bperl\b[^\n]*-i|\bdd\b|\binstall\b|\btruncate\b|\bmv\b)",
-        re.I,
-    )
-    if isinstance(command, str) and state_name in command and write_indicators.search(command):
-        candidates.append(state_name)
+    # Syntax-based, not name-based: the gate decides from the RESOLVED
+    # TARGET PATH of the write, never from a literal filename appearing in
+    # the command string. A Bash payload is judged by the same path rule as
+    # Write/Edit — every write-shaped construct's operand is extracted and
+    # resolved against the project root, then prefix/equality-checked
+    # against the state file's realpath.
+    #
+    # Fail-closed clause: if the command could write (matches any
+    # write-shaped construct below) and that construct's target operand
+    # cannot be pinned down to a plain literal path — because it contains a
+    # shell variable, parameter expansion, command substitution ($(...) or
+    # backticks), a glob, indirection, or the command runs through `eval` —
+    # the gate DENIES outright. It never falls through to allow just
+    # because the target didn't textually match the state file's name;
+    # that fallthrough is exactly the defect this rewrite closes.
+    DYNAMIC_RE = re.compile(r"[$`*?\[\](){}~]")
+
+    def is_dynamic(tok):
+        return (not tok) or bool(DYNAMIC_RE.search(tok))
+
+    def strip_quotes(tok):
+        if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in "\"'":
+            return tok[1:-1]
+        return tok
+
+    def non_flag_args(argstr):
+        return [a for a in argstr.split() if a and not a.startswith("-")]
+
+    bash_unresolvable = False
+    bash_literal_targets = []
+
+    if isinstance(command, str) and command:
+        if re.search(r"\beval\b", command):
+            # `eval` can construct and execute an arbitrary write at
+            # runtime; its payload is not statically parseable here.
+            bash_unresolvable = True
+        else:
+            for op_m in re.finditer(r"(>>|>\|?)\s*(\S+)", command):
+                tok = strip_quotes(op_m.group(2))
+                if tok.startswith("&"):
+                    continue  # fd duplication (e.g. `2>&1`), not a path write
+                if is_dynamic(tok):
+                    bash_unresolvable = True
+                else:
+                    bash_literal_targets.append(tok)
+
+            for tee_m in re.finditer(r"\btee\b((?:\s+-\S+)*)\s+([^\n;&|]+?)(?=(?:[;&|]|$))", command):
+                for tok in non_flag_args(tee_m.group(2)):
+                    tok = strip_quotes(tok)
+                    if is_dynamic(tok):
+                        bash_unresolvable = True
+                    else:
+                        bash_literal_targets.append(tok)
+
+            for dd_m in re.finditer(r"\bdd\b[^\n;&|]*\bof=(\S+)", command):
+                tok = strip_quotes(dd_m.group(1))
+                if is_dynamic(tok):
+                    bash_unresolvable = True
+                else:
+                    bash_literal_targets.append(tok)
+
+            for cmv_m in re.finditer(r"\b(?:cp|mv|install|truncate)\b([^\n;&|]*)", command):
+                args = non_flag_args(cmv_m.group(1))
+                if args:
+                    tok = strip_quotes(args[-1])
+                    if is_dynamic(tok):
+                        bash_unresolvable = True
+                    else:
+                        bash_literal_targets.append(tok)
+
+            for si_m in re.finditer(r"\b(?:sed|perl)\b([^\n;&|]*-i[^\n;&|]*)", command):
+                for tok in non_flag_args(si_m.group(1)):
+                    if tok == "-i":
+                        continue
+                    tok = strip_quotes(tok)
+                    if is_dynamic(tok):
+                        bash_unresolvable = True
+                    else:
+                        bash_literal_targets.append(tok)
+
+    if bash_unresolvable:
+        refuse(
+            "review-cycle: refused — Rule 1 (write gate): this Bash command's write target cannot be determined "
+            "statically (a variable, parameter expansion, command substitution, glob, indirection, eval, or other "
+            "non-literal operand). Fail-closed: refusing rather than allowing a write that might target %s." % state_name
+        )
+
+    candidates.extend(bash_literal_targets)
 
 state_path_real = resolve(state_name)
 
@@ -216,13 +287,6 @@ touches_state = False
 for c in candidates:
     c_real = resolve(c)
     if c_real is not None and state_path_real is not None and c_real == state_path_real:
-        touches_state = True
-        break
-    # Bash candidates carry only the bare basename (see above); a literal
-    # basename match against the resolved state path's own basename is the
-    # best this gate can do without executing the shell, and — per the
-    # comment above — erring toward gating is the safe direction.
-    if tool == "Bash" and c == state_name:
         touches_state = True
         break
 
