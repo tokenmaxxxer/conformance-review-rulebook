@@ -146,6 +146,84 @@ else
   pass=$((pass+1))
 fi
 
+# --- (g) existing state file with value "(none)" -> DENY, rules-not-loaded
+root="$(new_root)"
+write_state "$root" "(none)"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: idle\n"}}
+JSON
+)
+out_g="$(run_gate "$root" "$payload" 2>&1)"
+rc_g=$?
+if [ "$rc_g" -eq 0 ]; then
+  echo "FAIL: (g) existing status:(none) — expected deny, got exit 0. Output: $out_g"
+  fail=$((fail+1))
+elif ! printf '%s' "$out_g" | grep -q "rules could not be loaded"; then
+  echo "FAIL: (g) existing status:(none) — denied but wrong message. Output: $out_g"
+  fail=$((fail+1))
+else
+  echo "PASS: (g) existing status:(none) denied with rules-could-not-be-loaded message"
+  pass=$((pass+1))
+fi
+
+# --- (h) existing state file with empty status value -> DENY, rules-not-loaded
+root="$(new_root)"
+printf 'status:\n' > "$root/review-record.md"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: idle\n"}}
+JSON
+)
+out_h="$(run_gate "$root" "$payload" 2>&1)"
+rc_h=$?
+if [ "$rc_h" -eq 0 ]; then
+  echo "FAIL: (h) existing empty status — expected deny, got exit 0. Output: $out_h"
+  fail=$((fail+1))
+elif ! printf '%s' "$out_h" | grep -q "rules could not be loaded"; then
+  echo "FAIL: (h) existing empty status — denied but wrong message. Output: $out_h"
+  fail=$((fail+1))
+else
+  echo "PASS: (h) existing empty status denied with rules-could-not-be-loaded message"
+  pass=$((pass+1))
+fi
+
+# --- (i) existing state file with out-of-set value -> DENY, rules-not-loaded
+root="$(new_root)"
+write_state "$root" "totally-bogus-state"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: idle\n"}}
+JSON
+)
+out_i="$(run_gate "$root" "$payload" 2>&1)"
+rc_i=$?
+if [ "$rc_i" -eq 0 ]; then
+  echo "FAIL: (i) existing out-of-set status — expected deny, got exit 0. Output: $out_i"
+  fail=$((fail+1))
+elif ! printf '%s' "$out_i" | grep -q "rules could not be loaded"; then
+  echo "FAIL: (i) existing out-of-set status — denied but wrong message. Output: $out_i"
+  fail=$((fail+1))
+else
+  echo "PASS: (i) existing out-of-set status denied with rules-could-not-be-loaded message"
+  pass=$((pass+1))
+fi
+
+# --- (j) existing valid state with trailing whitespace/CRLF -> treated as
+#     that valid state (normal table-legal transition allowed) ------------
+root="$(new_root)"
+printf 'status: scoped  \r\n' > "$root/review-record.md"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: auditing\n"}}
+JSON
+)
+expect_allow "(j) existing status with trailing whitespace/CRLF treated as valid state" "$root" "$payload"
+
+# --- (k) state file genuinely absent -> (none)->X bootstrap row ALLOWED --
+root="$(new_root)"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: idle\n"}}
+JSON
+)
+expect_allow "(k) genuinely absent state file, (none)->idle bootstrap row allowed" "$root" "$payload"
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
