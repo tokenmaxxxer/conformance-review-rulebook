@@ -13,7 +13,13 @@
 #   inject-transition-rules.sh. This gate no longer consults approval
 #   tokens or any other side-channel; it only answers (a) does this write
 #   reach the state file, and (b) if so, is the resulting transition a row
-#   in transition-rules.md.
+#   in transition-rules.md. This gate has no hardcoded state or verdict
+#   list of its own — the known-states set is whatever appears in
+#   transition-rules.md's `from`/`to` columns, currently `idle`, `scoped`,
+#   `auditing`, `draft-reported`, `reported`, plus the `(none)` bootstrap
+#   (which is never itself a row's `from`/`to` target other than as the
+#   synthetic starting state). Adding `draft-reported` therefore required
+#   no change to this script's logic, only to transition-rules.md.
 #
 #   Rule 2 (read refusal): in EVERY state, a tool call whose target names a
 #   proposal/intent/scratch path — docs/proposals/**, or a path whose name
