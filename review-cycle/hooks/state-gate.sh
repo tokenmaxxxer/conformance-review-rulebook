@@ -35,15 +35,14 @@
 #   all covered the same way. A target with no readable frontmatter `kind:`
 #   field is not refused by this rule (nothing to check it against).
 #
-#   Rule 0 (contract SHA pin): before either rule above runs, this gate
-#   compares the contract SHA pinned in this repo's README.md
-#   ("## Handoff protocol (contract SHA `<sha>`)") against the current
-#   commit that touched docs/specs/role-handoff-contract.md in the
-#   enclosing tokenmaxxxer root repo (`git log -1 --format=%H -- <path>`,
-#   the same mechanism docs/specs/role-handoff-contract.md section 4 uses
-#   for its own staleness check). A mismatch, or either SHA being
-#   unobtainable, refuses every tool call this gate covers until the
-#   pinned excerpt is refreshed.
+#   Rule 0 (repo-local contract presence): before either rule above runs,
+#   this gate resolves exactly one root — the git root of the current
+#   working directory — and checks that root for
+#   docs/specs/role-handoff-contract.md. If that file is absent, every
+#   handoff-protocol-relevant tool call this gate covers is refused with a
+#   plain message that this repo has no collaboration contract yet, rather
+#   than silently passing. This gate never walks to a parent or sibling
+#   repo and never compares against another repo's git history.
 #
 # FAILS CLOSED: malformed stdin, an unparseable payload, an unreadable
 # tool_input, or any input this script does not recognize the shape of
@@ -166,64 +165,18 @@ def resolve(path_str):
     real = posixpath.normpath(os.path.realpath(absu).replace("\\", "/"))
     return real
 
-# --- Rule 0: contract SHA pin -------------------------------------------
-# Walk up past this repo's own root to the enclosing tokenmaxxxer root repo
-# (the one holding docs/specs/role-handoff-contract.md), mirroring the same
-# "walk up to nearest enclosing .git" approach used above for this repo's
-# own root, continued one .git further out.
-def find_enclosing_git(start_dir):
-    d = start_dir
-    while True:
-        parent = posixpath.dirname(d)
-        if parent == d:
-            return None
-        if os.path.isdir(posixpath.join(parent, ".git")):
-            return parent
-        d = parent
-
-contract_root = find_enclosing_git(root_real)
-pinned_sha = None
-readme_path = posixpath.join(root_real, "README.md")
-try:
-    with open(readme_path, encoding="utf-8-sig") as fh:
-        readme_text = fh.read(1 << 20)
-    m = re.search(r"Handoff protocol \(contract SHA `([0-9a-fA-F]{7,40})`\)", readme_text)
-    if m:
-        pinned_sha = m.group(1)
-except OSError:
-    pinned_sha = None
-
-if pinned_sha is None:
+# --- Rule 0: repo-local contract presence -----------------------------
+# Resolve exactly one root — the git root of the current working
+# directory (already computed above as `root`/`root_real`) — and check
+# that root for docs/specs/role-handoff-contract.md. No parent-directory
+# walk, no reference to any other repo, no SHA comparison: absence of the
+# file is an honest refusal, not a silent pass.
+contract_path = posixpath.join(root_real, "docs/specs/role-handoff-contract.md")
+if not os.path.isfile(contract_path):
     refuse(
-        "review-cycle: refused — the transition rules could not be loaded: no pinned contract SHA could be read "
-        "from README.md's \"Handoff protocol\" section header. No tool call may proceed until this is fixed."
-    )
-if contract_root is None:
-    refuse(
-        "review-cycle: refused — the transition rules could not be loaded: no enclosing tokenmaxxxer root repo "
-        "(a further .git above this repo's own root) could be found to check docs/specs/role-handoff-contract.md's "
-        "current SHA against the pinned SHA %r." % pinned_sha
-    )
-
-import subprocess
-try:
-    current_sha = subprocess.run(
-        ["git", "-C", contract_root, "log", "-1", "--format=%H", "--", "docs/specs/role-handoff-contract.md"],
-        capture_output=True, text=True, timeout=10,
-    ).stdout.strip()
-except (OSError, subprocess.SubprocessError):
-    current_sha = ""
-
-if not current_sha:
-    refuse(
-        "review-cycle: refused — the transition rules could not be loaded: docs/specs/role-handoff-contract.md's "
-        "current SHA could not be determined via git log in %s. No tool call may proceed until this is fixed." % contract_root
-    )
-if current_sha != pinned_sha:
-    refuse(
-        "review-cycle: refused — docs/specs/role-handoff-contract.md has changed since this rulebook's "
-        "\"Handoff protocol\" excerpt was pinned (pinned at %s, now at %s). The excerpt in README.md must be "
-        "refreshed and re-pinned to the current SHA before this role may act." % (pinned_sha, current_sha)
+        "review-cycle: refused — this repo has no collaboration contract yet "
+        "(docs/specs/role-handoff-contract.md is absent at %s). No handoff-protocol action may proceed "
+        "until this repo's own contract file exists." % root_real
     )
 
 # --- Rule 2: standing refusal to read an artifact outside review's ---------

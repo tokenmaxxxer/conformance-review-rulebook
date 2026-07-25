@@ -103,12 +103,15 @@ frontmatter `status` field holds the state (`idle`, `scoped`, `auditing`,
 `verdict:`. See `docs/specs/state-machine.md` for the exact shape and every
 gate rule.
 
-## Handoff protocol (contract SHA `2affe5db7dfb285abaa2860d3004edb3f97c9aec`)
+## Handoff protocol
 
-Excerpt only — review's own rows from the shared, cross-repo
-`docs/specs/role-handoff-contract.md` (root `tokenmaxxxer` repo), pinned at
-commit `2affe5db7dfb285abaa2860d3004edb3f97c9aec`. Not a restatement of the
-full contract; read the contract itself for anything not covered here.
+The authoritative contract is the work repo's own
+`docs/specs/role-handoff-contract.md` — the gate resolves exactly one root
+(the git root of the current working directory) and reads that file inside
+it; if it is absent, handoff-protocol actions are refused rather than
+silently passed. This section is not a pinned excerpt of any particular
+contract; it describes only how the review role behaves against whatever
+contract the work repo carries.
 
 ### ACCEPTS
 
