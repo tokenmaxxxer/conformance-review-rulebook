@@ -1,0 +1,11 @@
+{
+  "name": "review-agent-env",
+  "version": "0.1.0",
+  "description": "One-install review environment: pulls in review-cycle as a dependency. Contains no code of its own.",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  },
+  "dependencies": [
+    "review-cycle"
+  ]
+}

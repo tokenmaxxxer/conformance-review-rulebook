@@ -1,0 +1,18 @@
+{
+  "name": "tokenmaxxxer-review",
+  "owner": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  },
+  "plugins": [
+    {
+      "name": "review-cycle",
+      "source": "./review-cycle",
+      "description": "The review role's state machine: idle -> scoped -> auditing -> reported. Per-requirement verdicts (Present, Surface, Absent, Incorrect) gate the move to reported; a standing refusal rule keeps the role from ever reading the building agent's intent or proposal prose."
+    },
+    {
+      "name": "review-agent-env",
+      "source": "./review-agent-env",
+      "description": "One-install environment bundle for the review role: installs review-cycle via dependency. Contains no code of its own."
+    }
+  ]
+}

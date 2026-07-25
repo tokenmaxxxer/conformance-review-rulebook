@@ -1,0 +1,8 @@
+{
+  "name": "review-cycle",
+  "version": "0.1.0",
+  "description": "Implements the review role's state machine (idle -> scoped -> auditing -> reported) from docs/specs/agent-roles.md: a UserPromptSubmit hook mints a single-use approval token only from the user's own unambiguous turn; a PreToolUse gate refuses the auditing -> reported transition unless every requirement in the review record carries a Present/Surface/Absent/Incorrect verdict AND a matching token is present, evaluated on the target path regardless of which tool performs the write; the same gate stands in every state to refuse reading the building agent's intent, reasoning, or proposal prose.",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  }
+}
