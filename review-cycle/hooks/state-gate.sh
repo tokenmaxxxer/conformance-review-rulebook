@@ -162,6 +162,7 @@ if [ -z "$root" ]; then
   exit 2
 fi
 
+set +e
 REVIEW_GATE_PAYLOAD="$payload" REVIEW_GATE_ROOT="$root" REVIEW_GATE_STATE_NAME="$state_name" REVIEW_GATE_RULES_FILE="$rules_file" python3 <<'PY'
 import json
 import os
@@ -169,6 +170,17 @@ import posixpath
 import re
 import sys
 
+import os as _fc_os
+def _fc_excepthook(_t, _e, _tb):
+    if issubclass(_t, SystemExit):
+        sys.__excepthook__(_t, _e, _tb); return
+    try:
+        sys.stderr.write("review-cycle: refused \u2014 state-gate.sh: fail-closed: internal error: %r\n" % (_e,))
+        sys.stderr.flush()
+    except Exception:
+        pass
+    _fc_os._exit(2)
+sys.excepthook = _fc_excepthook
 def allow(reason=""):
     if reason:
         print(json.dumps({"hookSpecificOutput": {
@@ -750,5 +762,10 @@ else:
         "transition in transition-rules.md (resulting content not statically verifiable)." % (state_name, cur_status)
     )
 PY
-
-exit $?
+rc=$?
+set -e
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+  echo "review-cycle: refused -- state-gate.sh: fail-closed: internal error (judge exited $rc; mapping non-0/2 to DENY)." >&2
+  exit 2
+fi
+exit "$rc"

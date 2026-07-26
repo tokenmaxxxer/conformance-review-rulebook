@@ -34,9 +34,21 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
 rules_file="${REVIEW_TRANSITION_RULES:-$HOOK_DIR/transition-rules.md}"
 state_name="${REVIEW_RECORD_NAME:-review-record.md}"
 
+set +e
 REVIEW_PAYLOAD="$payload" REVIEW_RULES_FILE="$rules_file" REVIEW_STATE_NAME="$state_name" python3 <<'PY'
 import json, os, posixpath, re, sys, subprocess
 
+import os as _fc_os
+def _fc_excepthook(_t, _e, _tb):
+    if issubclass(_t, SystemExit):
+        sys.__excepthook__(_t, _e, _tb); return
+    try:
+        sys.stderr.write("review-cycle: refused \u2014 trailer-gate.sh: fail-closed: internal error: %r\n" % (_e,))
+        sys.stderr.flush()
+    except Exception:
+        pass
+    _fc_os._exit(2)
+sys.excepthook = _fc_excepthook
 def deny(msg):
     sys.stderr.write("review-cycle: refused — " + msg + "\n")
     sys.exit(2)
@@ -164,4 +176,10 @@ if not (has_subject and has_kind):
          "record (Subject: <subject> and Kind: <record-kind>)." % ", ".join(missing))
 allow()
 PY
-exit $?
+rc=$?
+set -e
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+  echo "review-cycle: refused -- trailer-gate.sh: fail-closed: internal error (judge exited $rc; mapping non-0/2 to DENY)." >&2
+  exit 2
+fi
+exit "$rc"

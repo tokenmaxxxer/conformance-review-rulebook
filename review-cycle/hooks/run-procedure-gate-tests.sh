@@ -99,6 +99,25 @@ for g in path-ownership-gate.sh doc-bucket-gate.sh record-fields-gate.sh closed-
   else echo "FAIL: fail-closed malformed JSON — $g expected deny+output, got exit $rc out=$out"; fail=$((fail+1)); fi
 done
 
+# ---------------- fail-closed on internal error: crash payload -> exit 2 ----
+# Per docs/proposals/2026-07-26-gates-fail-closed-on-internal-error.md: any
+# internal error (an embedded NUL / undecodable path that makes
+# os.path.realpath raise, or a malformed payload) must resolve to exit 2 —
+# the ONLY code Claude Code PreToolUse treats as BLOCK. A bare non-2 exit
+# would fail OPEN, letting the guarded call through. These assert exit == 2
+# specifically, not merely non-zero.
+r="$(new_root)"
+for g in path-ownership-gate.sh doc-bucket-gate.sh record-fields-gate.sh closed-checks-gate.sh; do
+  out="$(run "$g" "$r" "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$r/docs/reports/records/auth/\\u0000review.md\",\"content\":\"x\"}}" 2>&1)"; rc=$?
+  if [ "$rc" -eq 2 ]; then echo "PASS: fail-closed NUL-in-file_path -> exit 2 — $g"; pass=$((pass+1))
+  else echo "FAIL: fail-closed NUL-in-file_path — $g expected exit 2 (DENY), got exit $rc out=$out"; fail=$((fail+1)); fi
+done
+for g in handbook-trigger-gate.sh trailer-gate.sh; do
+  out="$(run "$g" "$r" '{"tool_name":"Bash","tool_input":{"command":' 2>&1)"; rc=$?
+  if [ "$rc" -eq 2 ]; then echo "PASS: fail-closed malformed-JSON -> exit 2 — $g"; pass=$((pass+1))
+  else echo "FAIL: fail-closed malformed-JSON — $g expected exit 2 (DENY), got exit $rc out=$out"; fail=$((fail+1)); fi
+done
+
 echo "-----------------------------------------"
 echo "procedure-gate tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -27,6 +27,7 @@ if [ -z "$payload" ]; then
   exit 2
 fi
 
+set +e
 REVIEW_PAYLOAD="$payload" python3 <<'PY'
 import json, os, posixpath, sys, subprocess
 
@@ -34,6 +35,17 @@ BUCKETS = ("decisions", "handbooks", "reports", "specs", "proposals", "_assets")
 SKIP_DIRS = ("node_modules", "vendor", "dist", "build", "target", "out",
              "venv", ".venv", "site-packages", "coverage")
 
+import os as _fc_os
+def _fc_excepthook(_t, _e, _tb):
+    if issubclass(_t, SystemExit):
+        sys.__excepthook__(_t, _e, _tb); return
+    try:
+        sys.stderr.write("review-cycle: refused \u2014 doc-bucket-gate.sh: fail-closed: internal error: %r\n" % (_e,))
+        sys.stderr.flush()
+    except Exception:
+        pass
+    _fc_os._exit(2)
+sys.excepthook = _fc_excepthook
 def allow():
     sys.exit(0)
 
@@ -134,4 +146,10 @@ else:
 deny("doc-bucket-gate.sh: %s\nThe buckets are: %s.\nClassify by lifetime, not topic. "
      "Only docs/README.md may sit at the top of docs/; paths in DOCTRINE_ALLOW are exempt." % (reason, buckets))
 PY
-exit $?
+rc=$?
+set -e
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+  echo "review-cycle: refused -- doc-bucket-gate.sh: fail-closed: internal error (judge exited $rc; mapping non-0/2 to DENY)." >&2
+  exit 2
+fi
+exit "$rc"

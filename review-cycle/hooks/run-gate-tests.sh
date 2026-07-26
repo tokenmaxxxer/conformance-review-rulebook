@@ -524,6 +524,23 @@ fi
 
 cleanup_scratch
 
+# --- (s) fail-closed on internal error: NUL in file_path -> exit 2 (DENY) -
+# Per docs/proposals/2026-07-26-gates-fail-closed-on-internal-error.md: an
+# embedded NUL that makes os.path.realpath raise must resolve to exit 2 (the
+# only code Claude Code PreToolUse treats as BLOCK), never a fail-open non-2.
+root="$(new_root)"
+write_state "$root" "scoped"
+payload_s="{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$root/\\u0000review-record.md\",\"content\":\"status: auditing\\n\"}}"
+out_s="$(run_gate "$root" "$payload_s" 2>&1)"
+rc_s=$?
+if [ "$rc_s" -eq 2 ]; then
+  echo "PASS: (s) NUL in file_path fails closed to exit 2 (DENY)"
+  pass=$((pass+1))
+else
+  echo "FAIL: (s) NUL in file_path — expected exit 2 (DENY), got exit $rc_s. Output: $out_s"
+  fail=$((fail+1))
+fi
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

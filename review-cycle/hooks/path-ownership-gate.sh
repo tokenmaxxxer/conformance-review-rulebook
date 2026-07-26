@@ -30,12 +30,24 @@ if [ -z "$payload" ]; then
   exit 2
 fi
 
+set +e
 REVIEW_PAYLOAD="$payload" python3 <<'PY'
 import json, os, posixpath, re, sys, subprocess
 
 OWN_ROLE = "review"
 RECORDS_RE = re.compile(r'^docs/reports/records/([^/]+)/([A-Za-z0-9_\-]+)\.md$')
 
+import os as _fc_os
+def _fc_excepthook(_t, _e, _tb):
+    if issubclass(_t, SystemExit):
+        sys.__excepthook__(_t, _e, _tb); return
+    try:
+        sys.stderr.write("review-cycle: refused \u2014 path-ownership-gate.sh: fail-closed: internal error: %r\n" % (_e,))
+        sys.stderr.flush()
+    except Exception:
+        pass
+    _fc_os._exit(2)
+sys.excepthook = _fc_excepthook
 def deny(msg):
     sys.stderr.write("review-cycle: refused — " + msg + "\n")
     sys.exit(2)
@@ -100,4 +112,10 @@ deny("path-ownership-gate.sh: path ownership conflict — '%s' is owned by role 
      "docs/specs/role-handoff-contract.md §11 NEVER-OVERWRITE, not 'review'. Report the "
      "conflict; do not overwrite or merge into another role's record." % (rel, record_role))
 PY
-exit $?
+rc=$?
+set -e
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+  echo "review-cycle: refused -- path-ownership-gate.sh: fail-closed: internal error (judge exited $rc; mapping non-0/2 to DENY)." >&2
+  exit 2
+fi
+exit "$rc"
