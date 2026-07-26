@@ -44,29 +44,47 @@ EOF
 
 command -v python3 >/dev/null 2>&1 || fail_block "python3 is not available, so transition-rules.md and $STATE_FILE_NAME cannot be parsed."
 
-# Root is discovered by walking UP from the hook's own on-disk location to
-# the nearest enclosing `.git`, never from the process cwd or
-# CLAUDE_PROJECT_DIR — this must resolve to the same state file that
-# state-gate.sh guards, regardless of invoking cwd.
-root=""
-dir="$HOOK_DIR"
-while :; do
-  if [ -e "$dir/.git" ]; then
-    root="$dir"
-    break
-  fi
-  parent="$(dirname "$dir")"
-  [ "$parent" = "$dir" ] && break
-  dir="$parent"
-done
-[ -n "$root" ] || fail_block "no enclosing .git found by walking up from this hook's own directory ($HOOK_DIR)."
+# Root is the repository being worked in: CLAUDE_PROJECT_DIR when the harness
+# sets it, otherwise the process cwd, anchored on that directory's git root.
+# This must agree with state-gate.sh, which resolves the same way — the two
+# hooks read and guard the same state file, and a divergence between them is
+# worse than either being wrong alone: the injector would report one repo's
+# state while the gate judged another's.
+#
+# It is deliberately NOT the nearest `.git` above this hook's own location.
+# That coincides with the project only while the rulebook is vendored into it;
+# loaded as a plugin from its own checkout it resolves to the RULEBOOK's repo,
+# and the injector then reports `(none)` forever because the state file it
+# looks for does not exist there.
+root="${CLAUDE_PROJECT_DIR:-$PWD}"
+if top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ]; then
+  root="$top"
+fi
+root="$(cd "$root" 2>/dev/null && pwd -P)" || root=""
+[ -n "$root" ] || fail_block "could not resolve the project root being worked in (CLAUDE_PROJECT_DIR/cwd)."
 
 [ -f "$RULES_FILE" ] || fail_block "transition-rules.md not found at $RULES_FILE."
 [ -r "$RULES_FILE" ] || fail_block "transition-rules.md at $RULES_FILE is not readable."
 
 state_path="$root/$STATE_FILE_NAME"
 
-out="$(REVIEW_RULES_FILE="$RULES_FILE" REVIEW_STATE_PATH="$state_path" REVIEW_STATE_NAME="$STATE_FILE_NAME" python3 <<'PY'
+# The parser below is read into a variable by a heredoc at TOP LEVEL, then
+# passed to `python3 -c`, rather than being written as
+# `out="$(python3 <<'PY' … PY)"`. Under bash 3.2 — the /bin/bash every macOS
+# ships — a quoted-delimiter heredoc nested inside `$( … )` is NOT treated as
+# literal while the closing paren is scanned for: the parser still tracks
+# quotes and parentheses inside the body. A single apostrophe in an English
+# possessive ("the gate's own sentinel", in the body below) or one unbalanced
+# `(` was therefore enough to make the whole file fail to parse, and since
+# this is a UserPromptSubmit hook, that blocked EVERY prompt for this role:
+#
+#   inject-transition-rules.sh: line 69: unexpected EOF while looking for `)'
+#   UserPromptSubmit operation blocked by hook
+#
+# Removing the apostrophes would also have worked, and would have left the
+# next person to write a comment here holding a loaded gun. `bash -n` catches
+# a regression; hooks/tests/parse-check.sh runs it.
+IFS='' read -r -d '' PY_SRC <<'PY' || true
 import os
 import re
 import sys
@@ -160,7 +178,8 @@ else:
     lines.append("no legal transitions listed from %s in transition-rules.md." % status)
 print("\n".join(lines))
 PY
-)"
+
+out="$(REVIEW_RULES_FILE="$RULES_FILE" REVIEW_STATE_PATH="$state_path" REVIEW_STATE_NAME="$STATE_FILE_NAME" python3 -c "$PY_SRC")"
 rc=$?
 
 status_line="$(printf '%s\n' "$out" | head -n1)"
