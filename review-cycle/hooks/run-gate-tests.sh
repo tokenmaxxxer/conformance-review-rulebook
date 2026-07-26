@@ -57,17 +57,6 @@ expect_allow() {
   fi
 }
 
-new_root() {
-  local d
-  d="$(mktemp -d -p "$WORKDIR")"
-  echo "$d"
-}
-
-write_state() {
-  # $1 = root, $2 = status
-  printf 'status: %s\n' "$2" > "$1/review-record.md"
-}
-
 write_contract() {
   # $1 = root. Creates a present-but-minimal
   # docs/specs/role-handoff-contract.md so Rule 0 (contract-presence)
@@ -75,6 +64,22 @@ write_contract() {
   # something OTHER than Rule 0, notably the §11 owned-path tests below.
   mkdir -p "$1/docs/specs"
   printf '# role-handoff-contract\n\n## 11. NEVER-OVERWRITE\n\nA role owns exactly its own docs/reports/records/<subject>/<role>.md slot.\n' > "$1/docs/specs/role-handoff-contract.md"
+}
+
+new_root() {
+  local d
+  d="$(mktemp -d -p "$WORKDIR")"
+  # Rule 0 needs the contract in the repo under test. Before the gate
+  # anchored on the project being worked in, this passed because root
+  # resolved to the RULEBOOK repo, which carries one — the fixtures were
+  # never exercising Rule 0 against themselves.
+  write_contract "$d"
+  echo "$d"
+}
+
+write_state() {
+  # $1 = root, $2 = status
+  printf 'status: %s\n' "$2" > "$1/review-record.md"
 }
 
 # --- (a) same-state write, no self-loop row (idle | idle) -> DENY --------
@@ -233,28 +238,29 @@ JSON
 )
 expect_allow "(k) genuinely absent state file, (none)->idle bootstrap row allowed" "$root" "$payload"
 
-# --- (l) invoked from a cwd OUTSIDE the repo, CLAUDE_PROJECT_DIR unset ---
-# Root resolution must be anchored to the hook's own on-disk location, never
-# to the process cwd or CLAUDE_PROJECT_DIR. Run the SAME payload against the
-# real on-disk gate once from inside this repo's own checkout and once from
-# an unrelated outside directory, both with CLAUDE_PROJECT_DIR unset — the
-# two must reach the identical decision, proving the outside-cwd invocation
-# still resolved and judged this repo's own review-record.md rather than
-# some other (or no) state file.
+# --- (l) the gate follows the project, not its own location ---------------
+# Where this hook sits on disk must not decide what it guards. Copy the whole
+# hooks directory somewhere outside any project, run that copy with the
+# project as cwd, and it must reach the same decision as the in-repo copy.
+#
+# Until 2026-07-26 root was the nearest `.git` ABOVE the hook itself. A
+# rulebook loaded as a plugin from its own checkout — which is how an
+# orchestrator swaps rulebooks per role — therefore guarded the rulebook's
+# repo, and every write in the real project fell outside its owned paths and
+# was allowed, silently, exit 0.
 repo_root="$(cd "$HOOK_DIR/../.." && pwd -P)"
-outside_dir="$(mktemp -d)"
-payload_l='{"tool_name":"Write","tool_input":{"file_path":"review-record.md","content":"status: idle\n"}}'
+elsewhere="$(mktemp -d)"
+cp -R "$HOOK_DIR" "$elsewhere/hooks"
+payload_l='{"tool_name":"Write","tool_input":{"file_path":"review-record.md","content":"status: idle\\n"}}'
 out_in="$(cd "$repo_root" && env -u CLAUDE_PROJECT_DIR bash -c 'printf "%s" "$1" | bash "$2"' _ "$payload_l" "$GATE" 2>&1)"
 code_in=$?
-out_out="$(cd "$outside_dir" && env -u CLAUDE_PROJECT_DIR bash -c 'printf "%s" "$1" | bash "$2"' _ "$payload_l" "$GATE" 2>&1)"
+out_out="$(cd "$repo_root" && env -u CLAUDE_PROJECT_DIR bash -c 'printf "%s" "$1" | bash "$2"' _ "$payload_l" "$elsewhere/hooks/$(basename "$GATE")" 2>&1)"
 code_out=$?
-rm -rf "$outside_dir"
+rm -rf "$elsewhere"
 if [ "$code_in" -eq "$code_out" ]; then
-  echo "PASS: (l) invocation from outside the repo resolves the same repo root as invocation from inside it (exit $code_out matches exit $code_in)"
-  pass=$((pass+1))
+  echo "PASS: (l) a copy of the gate outside the rulebook reaches the same decision as the in-repo gate (exit $code_out)"; pass=$((pass+1))
 else
-  echo "FAIL: (l) invocation from outside the repo (exit $code_out) diverged from invocation from inside it (exit $code_in) — outside: $out_out | inside: $out_in"
-  fail=$((fail+1))
+  echo "FAIL: (l) the gate's own location changed its decision (in-repo exit $code_in, out-of-tree exit $code_out) — out: $out_out | in: $out_in"; fail=$((fail+1))
 fi
 
 # --- (m) §11 subject-scoped own-record write -> ALLOW ---------------------
