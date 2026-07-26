@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# PreToolUse hook for the `review` role. Two independent rules, both
-# evaluated against the TARGET PATH (or, for Bash, the resolved operand of
-# the command string) rather than against which tool performs the action —
-# named directly in docs/specs/agent-roles.md Part 3: "a rejection rule is
-# evaluated against the path being written, never against which tool
-# performs the write." The same treatment extends here to reads, because
-# rule 2 below is a read refusal, not a write refusal.
+# PreToolUse hook for the `review` role, conforming to
+# docs/specs/role-handoff-contract.md v2 (the blackboard/event model). This
+# gate now enforces exactly two things, both evaluated against the TARGET
+# PATH (or, for Bash, the resolved operand of the command string) rather
+# than against which tool performs the action — named directly in
+# docs/specs/agent-roles.md Part 3: "a rejection rule is evaluated against
+# the path being written, never against which tool performs the write."
 #
 #   Rule 1 (write gate): a write that reaches review-record.md, judged by
 #   RESOLVED TARGET PATH, is checked against transition-rules.md — the
@@ -21,28 +21,45 @@
 #   synthetic starting state). Adding `draft-reported` therefore required
 #   no change to this script's logic, only to transition-rules.md.
 #
-#   Rule 2 (read refusal): in EVERY state, a tool call whose target resolves
-#   to an existing file declaring a frontmatter `kind:` field outside this
-#   role's accepted-kind set — {build-proposal, hypothesis,
-#   feasibility-record}, per docs/specs/role-handoff-contract.md section 3's
-#   accept/refuse row for `review` — is refused outright. This replaces the
-#   former path-shaped rule (a `docs/proposals(/|$)` regex plus a
-#   proposal/intent/scratch filename check), which broke the moment an
-#   intent-bearing kind moved out of `docs/proposals/`. Refusal is now by
-#   declared `kind`, not by path, and is checked regardless of tool: Read,
-#   Grep, Glob, NotebookEdit's notebook_path, and Bash commands (cat, less,
-#   grep, sed -n, head, tail, ...) that name such a path as an operand are
-#   all covered the same way. A target with no readable frontmatter `kind:`
-#   field is not refused by this rule (nothing to check it against).
+#   NOTE ON v1 RULE 2 (removed): a prior version of this gate refused any
+#   read whose target declared a frontmatter `kind:` outside review's
+#   accepted-kind set ({build-proposal, hypothesis, feasibility-record}).
+#   Contract v2 §4 ("READ-broad") directly contradicts that behavior:
+#   "Every role may read every other role's record, unconditionally, for
+#   context. Reading something is never itself a violation." That rule has
+#   been deleted outright, not loosened — no replacement read-refusal logic
+#   exists in this gate, and none is warranted. DEPENDS-ON is still a real
+#   v2 constraint (review may not build a `spec_vs_built` finding on
+#   `hypothesis` narrative alone — contract §4: "Reading the narrative is
+#   allowed; building `spec_vs_built` on it alone is not"), but this is a
+#   judgment about which evidence a role cited to reach a conclusion, not a
+#   structural property of a write's target path or content shape. It is
+#   NOT mechanically checkable the way Rule 1's transition-table lookup is,
+#   and this gate does not attempt heuristic detection for it (e.g.
+#   grepping a finding block for whether it mentions `hypothesis`) — per
+#   contract §14, a heuristic mechanical check for a non-mechanical
+#   property produces false confidence, which is worse than no check.
+#   Enforcement of DEPENDS-ON for `spec_vs_built` remains a documentation-
+#   only rule, carried by review's own conduct and by human/reviewer
+#   scrutiny of `review.md`, not by this hook.
 #
-#   Rule 0 (repo-local contract presence): before either rule above runs,
-#   this gate resolves exactly one root — the git root of the current
-#   working directory — and checks that root for
+#   Rule 0 (repo-local contract presence): before Rule 1 runs, this gate
+#   resolves exactly one root — the git root of the current working
+#   directory — and checks that root for
 #   docs/specs/role-handoff-contract.md. If that file is absent, every
 #   handoff-protocol-relevant tool call this gate covers is refused with a
 #   plain message that this repo has no collaboration contract yet, rather
 #   than silently passing. This gate never walks to a parent or sibling
 #   repo and never compares against another repo's git history.
+#
+#   NOTE ON STATE PATH SCOPING: this gate is still hardcoded to a single
+#   flat `review-record.md` (state_name default, REVIEW_RECORD_NAME env
+#   var), not the contract's subject-scoped
+#   `docs/reports/records/<subject>/review.md`. Resolving that gap (how
+#   `<subject>` is determined at gate-run time — env var, single
+#   in-flight-subject convention, or scanning) is deferred, per the landing
+#   proposal, as separate follow-on work; this rewrite does not change
+#   Rule 1's path behavior.
 #
 # FAILS CLOSED: malformed stdin, an unparseable payload, an unreadable
 # tool_input, or any input this script does not recognize the shape of
@@ -179,57 +196,60 @@ if not os.path.isfile(contract_path):
         "until this repo's own contract file exists." % root_real
     )
 
-# --- Rule 2: standing refusal to read an artifact outside review's ---------
-# --- accepted-kind set, by declared `kind`, not by path ---------------------
-ACCEPTED_KINDS = {"build-proposal", "hypothesis", "feasibility-record"}
-KIND_RE = re.compile(r"^kind:\s*(\S+)\s*$", re.M)
+# --- §11 subject-scoped owned-path classification -------------------------
+# Contract v2's blackboard lives at docs/reports/records/<subject>/<role>.md
+# for ANY subject value. review owns exactly its own
+# docs/reports/records/<subject>/review.md slot, for every subject; any
+# other role's file under that same shape (e.g.
+# docs/reports/records/<subject>/product.md) is structurally owned by that
+# other role, and a write there is a §11 NEVER-OVERWRITE violation —
+# refused (exit 2), not silently allowed. This mirrors the subject-scoped
+# owned-path classification the qa and product gates already apply to
+# their own role name, applied here to review's role name ("review").
+# Scoped to Write/Edit/MultiEdit file_path targets only (the same scope
+# product's equivalent check uses) — Bash-mediated writes to a foreign
+# record are not classified here, matching Rule 1's existing scope
+# decisions elsewhere in this gate. This is additive to, and does not
+# replace, Rule 1's flat review-record.md handling below.
+RECORDS_RE = re.compile(r'^docs/reports/records/([^/]+)/([A-Za-z0-9\-]+)\.md$')
+OWN_ROLE = "review"
 
-def declared_kind(resolved_path):
-    """Returns the frontmatter `kind:` value of an existing file at
-    resolved_path, or None if the file doesn't exist, isn't readable, or
-    carries no such field."""
-    if not resolved_path or not os.path.isfile(resolved_path):
+def repo_relative_or_none(real_path):
+    """Given an already-resolved real absolute posix path, return it as a
+    root-relative posix path, or None if it resolves outside root."""
+    if real_path is None:
         return None
-    try:
-        with open(resolved_path, encoding="utf-8-sig") as fh:
-            text = fh.read(1 << 20)
-    except (OSError, UnicodeDecodeError):
+    if real_path == root_real or not real_path.startswith(root_real + "/"):
         return None
-    m = KIND_RE.search(text)
-    return m.group(1) if m else None
+    return real_path[len(root_real) + 1:]
 
-def refuse_if_unaccepted_kind(tool_label, path_str):
-    resolved = resolve(path_str)
-    kind = declared_kind(resolved)
-    if kind is not None and kind not in ACCEPTED_KINDS:
-        refuse(
-            "review-cycle: refused — %s targets %r, which declares kind %r. The review role accepts only "
-            "{build-proposal, hypothesis, feasibility-record}; any other declared kind is refused by kind, not "
-            "by path, per docs/specs/role-handoff-contract.md section 3's accept/refuse row for review." % (tool_label, path_str, kind)
-        )
+def classify_records_path(rel_path):
+    """Returns (category, subject) where category is "own-record"
+    (review's own subject-scoped slot), "foreign-record" (another role's
+    subject-scoped slot — a §11 violation to write to), or (None, None)
+    when rel_path is not a docs/reports/records/<subject>/<role>.md path
+    at all."""
+    m = RECORDS_RE.match(rel_path)
+    if not m:
+        return None, None
+    subject, record_role = m.group(1), m.group(2)
+    if record_role == OWN_ROLE:
+        return "own-record", subject
+    return "foreign-record", subject
 
-READ_PATH_KEYS = {
-    "Read": ["file_path"],
-    "Grep": ["path"],
-    "Glob": ["path"],
-    "NotebookEdit": ["notebook_path"],
-}
-
-if tool in READ_PATH_KEYS:
-    for key in READ_PATH_KEYS[tool]:
-        val = tool_input.get(key)
-        if isinstance(val, str) and val:
-            refuse_if_unaccepted_kind(tool, val)
-
-if tool == "Bash":
-    command = tool_input.get("command")
-    if not isinstance(command, str) or not command:
-        refuse("review-cycle: refused — the transition rules could not be loaded: a Bash call arrived with no readable command. Refusing rather than allowing an uninspectable action.")
-
-    for token in re.split(r"[\s|;&<>()\"']+", command):
-        if not token or token.startswith("-"):
-            continue
-        refuse_if_unaccepted_kind("this Bash command", token)
+if tool in ("Write", "Edit", "MultiEdit"):
+    fp0 = tool_input.get("file_path")
+    if isinstance(fp0, str) and fp0:
+        rel0 = repo_relative_or_none(resolve(fp0))
+        category, subject = classify_records_path(rel0) if rel0 is not None else (None, None)
+        if category == "foreign-record":
+            refuse(
+                "review-cycle: refused — path ownership conflict: %s falls under another "
+                "role's owned subject-scoped record (docs/reports/records/%s/) per "
+                "docs/specs/role-handoff-contract.md §11 NEVER-OVERWRITE. review may write "
+                "only its own docs/reports/records/%s/review.md slot; refusing rather than "
+                "overwriting another role's record." % (rel0, subject, subject)
+            )
 
 # --- Rule 1: transition-table gate on writes reaching the state file ------
 # Candidate write-target paths for this call, however they get there. Also
