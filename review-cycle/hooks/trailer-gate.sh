@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# --- fail-closed trap-at-top (installed before any source/set/other code) ---
+# A PreToolUse gate that aborts before its verdict logic runs must still DENY:
+# Claude Code treats any non-2 exit as NON-BLOCKING (fail-open). This EXIT trap
+# forces exit 2 (DENY) for any exit code that is neither 0 (allow) nor 2 (deny).
+# Preserves legitimate terminal exit 0 / exit 2 verdicts unchanged.
+__fc(){ rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then echo "fail-closed: gate aborted (rc=$rc)" >&2; exit 2; fi; }
+trap __fc EXIT
 # PreToolUse(Bash matching 'git commit') sibling gate for the `review` role
 # — §13. When a review unit is IN PROGRESS (review-record.md exists and its
 # status is a non-terminal state) a `git commit` must carry review's declared

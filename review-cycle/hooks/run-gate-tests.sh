@@ -541,6 +541,63 @@ else
   fail=$((fail+1))
 fi
 
+# --- (t) fail-closed trap-at-top: a PRE-LOGIC abort forces exit 2 (DENY) ----
+# Per docs/proposals/2026-07-26-gates-fail-closed-trap-at-top.md: every
+# PreToolUse gate installs an EXIT trap as its first executable statement so
+# that ANY abnormal termination BEFORE its verdict logic runs (a failed
+# `source`, a `set -euo pipefail` abort, an unbound var) exits 2 (the only
+# code Claude Code PreToolUse treats as BLOCK), never a fail-OPEN non-2.
+#
+# To exercise the INSTALLED trap on the REAL gate against the exact failure
+# class it defends (an early `source` that aborts before any verdict), copy
+# the gate verbatim and inject a failing `source` of a non-existent file
+# immediately after its `trap __fc EXIT` line — i.e. still pre-logic. Absent
+# the trap this aborts with the source's non-2 code (fail-open); with the
+# trap it must become exit 2.
+#
+# First assert the trap is actually installed at the top of every PreToolUse
+# gate in this rulebook (the trap-at-top invariant), then assert it fires.
+trap_ok=1
+for g in state-gate path-ownership-gate doc-bucket-gate record-fields-gate \
+         closed-checks-gate handbook-trigger-gate trailer-gate; do
+  gf="$HOOK_DIR/$g.sh"
+  # The trap must appear before any `set` or `source`/`.` line.
+  first_exec="$(grep -nE '^\s*(set |source |\. |trap __fc EXIT)' "$gf" | head -n1)"
+  case "$first_exec" in
+    *"trap __fc EXIT"*) ;;
+    *) trap_ok=0; echo "  trap-at-top MISSING or not first in $g.sh (first: $first_exec)";;
+  esac
+done
+if [ "$trap_ok" -eq 1 ]; then
+  echo "PASS: (t0) fail-closed trap __fc installed as first executable statement in every PreToolUse gate"
+  pass=$((pass+1))
+else
+  echo "FAIL: (t0) fail-closed trap not installed-at-top in every PreToolUse gate"
+  fail=$((fail+1))
+fi
+
+gate_copy="$WORKDIR/state-gate-prelogic-abort.sh"
+# Reproduce the file with a failing pre-logic `source` inserted right after
+# the installed trap line, preserving everything else verbatim.
+awk '{ print }
+     /^trap __fc EXIT$/ && !done { print "source \"'"$WORKDIR"'/_gate-common-does-not-exist.sh\""; done=1 }' \
+     "$GATE" > "$gate_copy"
+root="$(new_root)"
+write_state "$root" "scoped"
+payload_t=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/review-record.md","content":"status: auditing\n"}}
+JSON
+)
+out_t="$(CLAUDE_PROJECT_DIR="$root" bash "$gate_copy" <<<"$payload_t" 2>&1)"
+rc_t=$?
+if [ "$rc_t" -eq 2 ]; then
+  echo "PASS: (t) pre-logic abort (failed source before verdict logic) fails closed to exit 2 (DENY)"
+  pass=$((pass+1))
+else
+  echo "FAIL: (t) pre-logic abort — expected exit 2 (DENY) via trap-at-top, got exit $rc_t. Output: $out_t"
+  fail=$((fail+1))
+fi
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
