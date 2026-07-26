@@ -101,23 +101,25 @@ state_name="${REVIEW_RECORD_NAME:-review-record.md}"
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
 rules_file="${REVIEW_TRANSITION_RULES:-$HOOK_DIR/transition-rules.md}"
 
-# Root is discovered by walking UP from the hook's own on-disk location to
-# the nearest enclosing `.git`, never from the process cwd or
-# CLAUDE_PROJECT_DIR — a hook invoked with a cwd outside the repo must still
-# resolve to, and guard, this repo's own state file.
-root=""
-dir="$HOOK_DIR"
-while :; do
-  if [ -e "$dir/.git" ]; then
-    root="$dir"
-    break
-  fi
-  parent="$(dirname "$dir")"
-  [ "$parent" = "$dir" ] && break
-  dir="$parent"
-done
+# Root is the repository being worked in: CLAUDE_PROJECT_DIR when the harness
+# sets it, otherwise the process cwd, anchored on that directory's git root so
+# an invocation from a subdirectory still resolves to the project root.
+#
+# It is deliberately NOT the nearest `.git` above this hook's own location.
+# That coincides with the project only while the rulebook is vendored into it.
+# Loaded as a plugin from its own checkout — which is how an orchestrator
+# swaps rulebooks per role — it resolves to the RULEBOOK's repo, and the gate
+# then guards a repository nobody is working in: every write in the real
+# project falls outside its owned paths, so it allows all of them and says
+# nothing. Measured 2026-07-26: a `scoped -> verdict` jump skipping `probing`
+# was permitted with exit 0.
+root="${CLAUDE_PROJECT_DIR:-$PWD}"
+if top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ]; then
+  root="$top"
+fi
+root="$(cd "$root" 2>/dev/null && pwd -P)" || root=""
 if [ -z "$root" ]; then
-  echo "review-cycle: refused — the transition rules could not be loaded: no enclosing .git found by walking up from this hook's own directory ($HOOK_DIR)." >&2
+  echo "review-cycle: refused — the transition rules could not be loaded: could not resolve the project root being worked in (CLAUDE_PROJECT_DIR/cwd)." >&2
   exit 2
 fi
 
