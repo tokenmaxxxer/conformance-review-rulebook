@@ -196,6 +196,61 @@ if not os.path.isfile(contract_path):
         "until this repo's own contract file exists." % root_real
     )
 
+# --- §11 subject-scoped owned-path classification -------------------------
+# Contract v2's blackboard lives at docs/reports/records/<subject>/<role>.md
+# for ANY subject value. review owns exactly its own
+# docs/reports/records/<subject>/review.md slot, for every subject; any
+# other role's file under that same shape (e.g.
+# docs/reports/records/<subject>/product.md) is structurally owned by that
+# other role, and a write there is a §11 NEVER-OVERWRITE violation —
+# refused (exit 2), not silently allowed. This mirrors the subject-scoped
+# owned-path classification the qa and product gates already apply to
+# their own role name, applied here to review's role name ("review").
+# Scoped to Write/Edit/MultiEdit file_path targets only (the same scope
+# product's equivalent check uses) — Bash-mediated writes to a foreign
+# record are not classified here, matching Rule 1's existing scope
+# decisions elsewhere in this gate. This is additive to, and does not
+# replace, Rule 1's flat review-record.md handling below.
+RECORDS_RE = re.compile(r'^docs/reports/records/([^/]+)/([A-Za-z0-9\-]+)\.md$')
+OWN_ROLE = "review"
+
+def repo_relative_or_none(real_path):
+    """Given an already-resolved real absolute posix path, return it as a
+    root-relative posix path, or None if it resolves outside root."""
+    if real_path is None:
+        return None
+    if real_path == root_real or not real_path.startswith(root_real + "/"):
+        return None
+    return real_path[len(root_real) + 1:]
+
+def classify_records_path(rel_path):
+    """Returns (category, subject) where category is "own-record"
+    (review's own subject-scoped slot), "foreign-record" (another role's
+    subject-scoped slot — a §11 violation to write to), or (None, None)
+    when rel_path is not a docs/reports/records/<subject>/<role>.md path
+    at all."""
+    m = RECORDS_RE.match(rel_path)
+    if not m:
+        return None, None
+    subject, record_role = m.group(1), m.group(2)
+    if record_role == OWN_ROLE:
+        return "own-record", subject
+    return "foreign-record", subject
+
+if tool in ("Write", "Edit", "MultiEdit"):
+    fp0 = tool_input.get("file_path")
+    if isinstance(fp0, str) and fp0:
+        rel0 = repo_relative_or_none(resolve(fp0))
+        category, subject = classify_records_path(rel0) if rel0 is not None else (None, None)
+        if category == "foreign-record":
+            refuse(
+                "review-cycle: refused — path ownership conflict: %s falls under another "
+                "role's owned subject-scoped record (docs/reports/records/%s/) per "
+                "docs/specs/role-handoff-contract.md §11 NEVER-OVERWRITE. review may write "
+                "only its own docs/reports/records/%s/review.md slot; refusing rather than "
+                "overwriting another role's record." % (rel0, subject, subject)
+            )
+
 # --- Rule 1: transition-table gate on writes reaching the state file ------
 # Candidate write-target paths for this call, however they get there. Also
 # tracks whether ANY write-shaped construct in a Bash command has an

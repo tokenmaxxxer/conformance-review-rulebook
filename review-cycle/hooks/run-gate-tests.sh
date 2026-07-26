@@ -68,6 +68,15 @@ write_state() {
   printf 'status: %s\n' "$2" > "$1/review-record.md"
 }
 
+write_contract() {
+  # $1 = root. Creates a present-but-minimal
+  # docs/specs/role-handoff-contract.md so Rule 0 (contract-presence)
+  # does not itself refuse the call — needed for tests that exercise
+  # something OTHER than Rule 0, notably the §11 owned-path tests below.
+  mkdir -p "$1/docs/specs"
+  printf '# role-handoff-contract\n\n## 11. NEVER-OVERWRITE\n\nA role owns exactly its own docs/reports/records/<subject>/<role>.md slot.\n' > "$1/docs/specs/role-handoff-contract.md"
+}
+
 # --- (a) same-state write, no self-loop row (idle | idle) -> DENY --------
 root="$(new_root)"
 write_state "$root" "idle"
@@ -246,6 +255,67 @@ if [ "$code_in" -eq "$code_out" ]; then
 else
   echo "FAIL: (l) invocation from outside the repo (exit $code_out) diverged from invocation from inside it (exit $code_in) — outside: $out_out | inside: $out_in"
   fail=$((fail+1))
+fi
+
+# --- (m) §11 subject-scoped own-record write -> ALLOW ---------------------
+# review writing its own docs/reports/records/<subject>/review.md slot is
+# allowed, for two distinct subject values.
+root="$(new_root)"
+write_contract "$root"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/docs/reports/records/checkout-flow/review.md","content":"status: idle\n"}}
+JSON
+)
+expect_allow "(m1) §11 own-record write, subject=checkout-flow -> allow" "$root" "$payload"
+
+root="$(new_root)"
+write_contract "$root"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/docs/reports/records/billing-retry/review.md","content":"status: idle\n"}}
+JSON
+)
+expect_allow "(m2) §11 own-record write, subject=billing-retry -> allow" "$root" "$payload"
+
+# --- (n) §11 subject-scoped foreign-record write -> DENY, cites §11 -------
+# review writing another role's docs/reports/records/<subject>/<role>.md
+# slot must be refused (exit 2) rather than silently allowed, for two
+# distinct subject values, and the refusal must cite §11.
+root="$(new_root)"
+write_contract "$root"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/docs/reports/records/checkout-flow/product.md","content":"status: idle\n"}}
+JSON
+)
+out_n1="$(run_gate "$root" "$payload" 2>&1)"
+rc_n1=$?
+if [ "$rc_n1" -eq 0 ]; then
+  echo "FAIL: (n1) §11 foreign-record write, subject=checkout-flow — expected deny, got exit 0. Output: $out_n1"
+  fail=$((fail+1))
+elif ! printf '%s' "$out_n1" | grep -q "§11"; then
+  echo "FAIL: (n1) §11 foreign-record write, subject=checkout-flow — denied but did not cite §11. Output: $out_n1"
+  fail=$((fail+1))
+else
+  echo "PASS: (n1) §11 foreign-record write, subject=checkout-flow denied (exit $rc_n1), cites §11"
+  pass=$((pass+1))
+fi
+
+root="$(new_root)"
+write_contract "$root"
+payload=$(cat <<JSON
+{"tool_name":"Write","tool_input":{"file_path":"$root/docs/reports/records/billing-retry/qa.md","content":"status: idle\n"}}
+JSON
+)
+out_n2="$(run_gate "$root" "$payload" 2>&1)"
+rc_n2=$?
+if [ "$rc_n2" -eq 0 ]; then
+  echo "FAIL: (n2) §11 foreign-record write, subject=billing-retry — expected deny, got exit 0. Output: $out_n2"
+  fail=$((fail+1))
+elif ! printf '%s' "$out_n2" | grep -q "§11"; then
+  echo "FAIL: (n2) §11 foreign-record write, subject=billing-retry — denied but did not cite §11. Output: $out_n2"
+  fail=$((fail+1))
+else
+  echo "PASS: (n2) §11 foreign-record write, subject=billing-retry denied (exit $rc_n2), cites §11"
+  pass=$((pass+1))
 fi
 
 echo
