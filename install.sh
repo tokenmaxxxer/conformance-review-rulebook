@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-shot installer for the tokenmaxxxer review-agent-rulebook stack.
 # Registers ONLY the tokenmaxxxer-review marketplace and installs ONLY this
-# repository's plugins (review-cycle) plus its bundle (review-agent-env).
+# repository's plugins (review).
 # Names no other repository and no other marketplace.
 #
 # Installs for your account only (user scope). Uses a real `claude` CLI
@@ -11,9 +11,9 @@
 set -euo pipefail
 
 MARKET="tokenmaxxxer-review"
-BUNDLE="review-agent-env"
+BUNDLE="review"
 GITHUB_REPO="tokenmaxxxer/review-agent-rulebook"
-PLUGINS=(review-cycle)
+PLUGINS=(review)
 
 usage() {
   cat <<'USAGE'
@@ -162,7 +162,7 @@ if [ -n "$CLI" ] && [ -x "$CLI" ]; then
     echo "    The rest of the stack is installed. Re-run this script — it is idempotent —"
     echo "    or install the failures individually with: $CLI plugin install <name>@$MARKET --scope user"
   else
-    echo "==> installed $BUNDLE@$MARKET and review-cycle."
+    echo "==> installed $BUNDLE@$MARKET."
   fi
 else
   echo "==> no claude CLI found (standalone or bundled): writing user settings directly"
@@ -180,5 +180,5 @@ cat <<'MSG'
       auto-update. There is no CLI/config switch for this toggle; it is a
       one-time interactive step.
     - without auto-update, refresh manually anytime:
-      claude plugin update review-agent-env@tokenmaxxxer-review
+      claude plugin update review@tokenmaxxxer-review
 MSG
