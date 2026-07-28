@@ -109,7 +109,7 @@ rel = real[len(root) + 1:] if (real == root or real.startswith(root + "/")) else
 state_name = os.environ.get("REVIEW_STATE_NAME") or "review-record.md"
 is_own_record = False
 if rel is not None:
-    if re.match(r'^docs/reports/records/[^/]+/review\.md$', rel):
+    if re.match(r'^docs/issue-[0-9]+/reports/review\.md$', rel):
         is_own_record = True
     elif posixpath.basename(rel) == state_name:
         is_own_record = True
@@ -172,17 +172,11 @@ if current is None:
     if len(mup) >= 1:
         current = mup[0].strip()
 if current is None:
-    try:
-        r = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"],
-                           capture_output=True, text=True)
-        if r.returncode == 0 and r.stdout.strip():
-            current = r.stdout.strip()
-    except Exception:
-        current = None
-if current is None:
-    deny("closed-checks-gate.sh: record carries closed_checks entries but the code sha currently "
-         "under review could not be determined (no code_under_review:/upstream: field, and "
-         "git rev-parse HEAD failed). Refusing rather than allowing an uncomparable cite-and-skip, per §16.")
+    deny("closed-checks-gate.sh: record carries closed_checks entries but no "
+         "code_under_review:/upstream_code_sha:/upstream: field naming the code sha under "
+         "review. Under per-role issue branches the working HEAD is a docs commit, never the "
+         "code under review, so the record must name the sha explicitly. Refusing an "
+         "uncomparable cite-and-skip, per s16.")
 
 def eqsha(a, b):
     a, b = a.strip(), b.strip()

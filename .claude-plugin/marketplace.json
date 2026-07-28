@@ -5,14 +5,9 @@
   },
   "plugins": [
     {
-      "name": "review-cycle",
-      "source": "./review-cycle",
-      "description": "The review role's state machine: idle -> scoped -> auditing -> reported. Per-requirement verdicts (Present, Surface, Absent, Incorrect) gate the move to reported; a standing refusal rule keeps the role from ever reading the building agent's intent or proposal prose."
-    },
-    {
-      "name": "review-agent-env",
-      "source": "./review-agent-env",
-      "description": "One-install environment bundle for the review role: installs review-cycle via dependency. Contains no code of its own."
+      "name": "review",
+      "source": "./review",
+      "description": "The review role on contract v3: per-requirement verdicts (Present|Surface|Absent|Incorrect|Unverifiable) on whether what was built matches what was specified \u2014 from the artifact and spec, never the builder's intent, never a fix. Directive carries the four facets; gates enforce record required fields, verdict vocabulary, closed_checks sha discipline (code_under_review:), and the Subject: issue-<n> trailer."
     }
   ]
 }

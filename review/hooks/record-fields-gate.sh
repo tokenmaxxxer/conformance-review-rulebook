@@ -8,7 +8,7 @@ __fc(){ rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then echo "fail-closed: gate
 trap __fc EXIT
 # PreToolUse(Write|Edit|MultiEdit) sibling gate for the `review` role — §20.
 # On a write targeting review's own record
-# (docs/reports/records/<subject>/review.md, or the flat review-record.md),
+# (docs/issue-<n>/reports/review.md, or the flat review-record.md),
 # requires §20's minimum-content sections in the PROPOSED content:
 #   always: a "what was done" section; the upstream basis (commit sha or
 #           record path); the record's own current loop_state/status.
@@ -114,7 +114,7 @@ rel = real[len(root) + 1:] if (real == root or real.startswith(root + "/")) else
 state_name = os.environ.get("REVIEW_STATE_NAME") or "review-record.md"
 is_own_record = False
 if rel is not None:
-    if re.match(r'^docs/reports/records/[^/]+/review\.md$', rel):
+    if re.match(r'^docs/issue-[0-9]+/reports/review\.md$', rel):
         is_own_record = True
     elif posixpath.basename(rel) == state_name:
         is_own_record = True
@@ -170,25 +170,7 @@ if len(m) != 1 or not m[0].strip():
     deny("record-fields-gate.sh: review record is missing a single parseable `status:`/`loop_state:` field (§20 item 3). Refusing.")
 status = m[0].strip()
 
-rules_file = os.environ.get("REVIEW_RULES_FILE") or ""
-froms, tos = set(), set()
-try:
-    with open(rules_file, encoding="utf-8-sig") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or "|" not in line or line.startswith("#"):
-                continue
-            parts = [p.strip() for p in line.strip("|").split("|")]
-            if len(parts) != 4 or (parts[0].lower() == "from" and parts[1].lower() == "to"):
-                continue
-            if set(parts[0]) <= {"-"} or set(parts[1]) <= {"-"}:
-                continue
-            froms.add(parts[0]); tos.add(parts[1])
-except OSError:
-    deny("record-fields-gate.sh: transition-rules.md could not be read to determine terminal states; denying rather than guessing whether work is open.")
-if not tos and not froms:
-    deny("record-fields-gate.sh: transition-rules.md has no parseable rows to determine terminal states; denying rather than guessing.")
-terminal = (tos | froms) - froms
+terminal = {"reported"}
 work_open = status not in terminal
 
 missing = []
@@ -204,6 +186,18 @@ if work_open:
         missing.append('next-steps backlog (required while work is open)')
     if not has(r"resolution path", r"resolution owner", r"owns resolving", r"open finding", r"open-finding", r"finding resolution"):
         missing.append('open-finding resolution path (required while work is open)')
+
+VERDICTS = {"present", "surface", "absent", "incorrect", "unverifiable"}
+for vm in re.finditer(r"^\s*verdict:\s*(\S+)\s*$", content, re.M):
+    v = vm.group(1).strip().lower()
+    if v not in VERDICTS:
+        deny("record-fields-gate.sh: verdict '%s' is not in the sanctioned vocabulary "
+             "(Present|Surface|Absent|Incorrect|Unverifiable). One verdict per requirement, "
+             "from exactly this set." % vm.group(1))
+if re.search(r"^\s*verdict:\s*incorrect\s*$", content, re.M | re.I) and \
+   not re.search(r"^\s*spec_vs_built\s*:", content, re.M):
+    deny("record-fields-gate.sh: a verdict of Incorrect requires a spec_vs_built field "
+         "stating what the spec asked versus what was built (contract s2 finding schema).")
 
 if missing:
     deny("record-fields-gate.sh: review record (status: %s) is missing required section(s): %s. "
