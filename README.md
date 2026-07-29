@@ -53,7 +53,7 @@ implementation.
     claude plugin marketplace add tokenmaxxxer/review-agent-rulebook
     claude plugin install review@tokenmaxxxer-review
 
-muster installs it per role alongside the core marketplace. Kill switch:
+on-the-record installs it per role alongside the core marketplace. Kill switch:
 `REVIEW_CYCLE_DISABLE=1`.
 
 ## Run the checks
