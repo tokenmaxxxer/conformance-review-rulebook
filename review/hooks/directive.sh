@@ -58,11 +58,12 @@ EXECUTION JUDGMENT (phase 2, quality bar):
 - A closed_checks cite is valid only when its code_sha equals the
   record's code_under_review:. Different sha: re-derive, never cite.
 
-YOUR RECORD IS THE BOARD (do not skip this): review's record is
+RECORD FORMAT (do not skip this): review's record is
 docs/issue-<n>/reports/review.md — write it as your FIRST act of
-phase 2, and update its loop_state at every transition. How WAKES-ON
-consumes this record is canon at on-the-record
-docs/specs/wake-routing.md, not restated here.
+phase 2, and update its loop_state at every transition. It carries the
+required fields named above (code_under_review:, extracted requirement
+list or sampling derivation, per-requirement verdicts with evidence,
+closed_checks cites) and must be committed on the branch.
 
 DIRECTIVE
 
