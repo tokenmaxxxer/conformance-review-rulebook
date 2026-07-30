@@ -2,10 +2,10 @@
 role: coding
 issue: 27
 loop_state: phase2_complete
-code_under_review: PLACEHOLDER_SHA
+code_under_review: 1b2270dc9bb02c6d1d22f2914fc84aa68cdad7ef
 closed_checks:
   - check: record-format-strong-form-grep
-    code_sha: PLACEHOLDER_SHA
+    code_sha: 1b2270dc9bb02c6d1d22f2914fc84aa68cdad7ef
     method: "grep -n 'means the record was never written\\|Measured: a phase-1-only issue left the record empty' review/hooks/directive.sh returns both lines (line 67-68); bash -n review/hooks/directive.sh passes; rest of RECORD FORMAT section byte-identical to pre-edit content"
 resolved_findings: []
 open_findings:
