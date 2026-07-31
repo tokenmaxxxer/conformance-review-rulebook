@@ -2,23 +2,26 @@
 
 Current state. Edited from now on to stay true.
 
-`review/hooks/` ships two role-owned files plus a copied-verbatim drift
-detector:
+`review/hooks/` ships two role-owned files. A third check, stub-check, is
+core canon (core #69) and is run by reference against the installed `core`
+plugin — never vendored as a local copy:
 
 - `directive.sh` — SessionStart stub. Sources core canon's
   `core/hooks/lib/role-directive.sh` and calls `core_role_directive` with
   review's four role-unique values (YOU DECIDE / USE_WHEN / PRODUCES /
-  HAND-OFF). No local boilerplate; `review/hooks/tests/stub-check.sh`
-  enforces this shape.
+  HAND-OFF). No local boilerplate; core's `stub-check.sh`, run by
+  reference, enforces this shape.
 - `closed-checks-gate.sh` — PreToolUse (Write|Edit|MultiEdit|NotebookEdit).
   Role-specific: a `closed_checks` cite must match the record's
   `code_under_review:` sha, never the working branch HEAD. Has no core
   canon counterpart.
-- `tests/stub-check.sh` — copied verbatim from
-  `core/hooks/tests/stub-check.sh`. Fails if a vendored copy of
-  `trailer-gate.sh` / `record-fields-gate.sh` / `handbook-trigger-gate.sh` /
-  `parse-check.sh` reappears under `review/hooks/` (depth ≤3), or if
-  `directive.sh` regrows local boilerplate instead of staying a stub.
+- `stub-check.sh` — core canon (`core/hooks/tests/stub-check.sh`), run by
+  reference against the installed `core` plugin, not vendored under
+  `review/hooks/`. Fails if a vendored copy of `trailer-gate.sh` /
+  `record-fields-gate.sh` / `handbook-trigger-gate.sh` / `parse-check.sh`
+  (or `stub-check.sh` itself) reappears under `review/hooks/` (depth ≤3),
+  or if `directive.sh` regrows local boilerplate instead of staying a
+  stub.
 
 Commit-trailer enforcement (`Subject: issue-<n>`), §20 record-fields
 minimum-content checks, and §21 same-turn handbook sync are **not**

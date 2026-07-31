@@ -27,11 +27,13 @@ implementation.
     review/hooks/closed-checks-gate.sh  a closed_checks cite must match the
                                         record's code_under_review: sha —
                                         never the working branch HEAD
-    review/hooks/tests/stub-check.sh    drift detector (core canon, copied
-                                        verbatim) — fails if a vendored copy
-                                        of trailer-gate.sh/record-fields-
-                                        gate.sh/handbook-trigger-gate.sh/
-                                        parse-check.sh reappears under here
+    (stub-check.sh)                     drift detector — core canon, run by
+                                        reference against the installed
+                                        core plugin (no local copy under
+                                        review/hooks); fails if a vendored
+                                        copy of trailer-gate.sh/record-
+                                        fields-gate.sh/handbook-trigger-
+                                        gate.sh/parse-check.sh reappears
     review/skills/finding-record        the finding schema and template
     review/skills/severity-classification  deterministic band lookup
     tests/                              repo-level checks (never installed)
