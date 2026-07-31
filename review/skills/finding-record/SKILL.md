@@ -63,17 +63,26 @@ finding record contain to be actionable?"):
 1. **`requirement`** — a stable identifier for the specific
    requirement/claim being checked, verbatim from the specification (or a
    stable id if the spec numbers its own requirements).
-2. **`verdict`** — one of the five values above.
-3. **`evidence`** — a pointer into the actual diff: file path, line
+2. **`spec_ref`** — the exact clause/section/requirement-id in the spec
+   being checked against, distinct from the free-text `requirement` field
+   above. Where the spec is unnumbered prose, `spec_ref` may be a stable
+   locator (heading + paragraph) instead of a formal id, but must not be
+   omitted for any verdict other than `Unverifiable` — a traceability
+   matrix needs a stable key on both sides (spec side and evidence side),
+   and `requirement` alone (free text, potentially paraphrased) does not
+   reliably serve as that key across re-review (issue #30 conformance
+   methodology proposal, part (b)).
+3. **`verdict`** — one of the five values above.
+4. **`evidence`** — a pointer into the actual diff: file path, line
    number, or hunk. Never a paraphrase of what the diff does — the
    reproduction path itself, mirroring OWASP's mandatory Evidence/PoC
    field and Fagan inspection's rule that the artifact is narrated, not
    summarized from memory. This is what makes the finding actionable: a
    claim of `Incorrect` or `Absent` with no evidence pointer is refused by
    this skill before it is written (see below).
-4. **`rationale`** — one line connecting the evidence to the verdict:
+5. **`rationale`** — one line connecting the evidence to the verdict:
    why this evidence supports this verdict, not a restatement of either.
-5. **`spec_vs_built`** — required only when `verdict: Incorrect`: what the
+6. **`spec_vs_built`** — required only when `verdict: Incorrect`: what the
    spec required, versus what was actually built. Optional/omitted for
    every other verdict.
 
@@ -88,6 +97,13 @@ or `Incorrect` with no `evidence` pointer — mirroring OWASP's mandatory
 Evidence/PoC field. `Unverifiable` is the one verdict that may carry an
 `evidence` field describing what access/evidence was missing instead of a
 diff pointer, since by definition there is no diff evidence to point at.
+
+This skill likewise refuses to accept a verdict of `Present`, `Surface`,
+`Absent`, or `Incorrect` with no `spec_ref` — the same traceability
+discipline applied to the spec side of the finding rather than the
+evidence side. `Unverifiable` is again the one verdict that may omit it,
+for the same reason: a requirement that could not be checked at all may
+not have had its spec locator pinned down either.
 
 ## What this skill never does
 
