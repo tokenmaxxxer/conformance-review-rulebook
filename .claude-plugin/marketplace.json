@@ -7,7 +7,27 @@
     {
       "name": "review",
       "source": "./review",
-      "description": "The review role on contract v3: per-requirement verdicts (Present|Surface|Absent|Incorrect|Unverifiable) on whether what was built matches what was specified \u2014 from the artifact and spec, never the builder's intent, never a fix. Directive carries the four facets; gates enforce record required fields, verdict vocabulary, closed_checks sha discipline (code_under_review:), and the Subject: issue-<n> trailer."
+      "description": "Role identity and phase protocol for the review role on contract v3 (directive facets, phase-1/phase-2 write scoping, resume-state hook). Methodology enforcement lives in the sibling review-traceability/review-severity/review-record-norm/review-proposal-completeness plugins."
+    },
+    {
+      "name": "review-traceability",
+      "source": "./review-traceability",
+      "description": "Per-requirement conformance traceability (ISO 19011/IIA evidence-based, independent verdicts; spec_ref + evidence field enforcement, issues #30/#37/#38)."
+    },
+    {
+      "name": "review-severity",
+      "source": "./review-severity",
+      "description": "Deterministic severity table-lookup enforcement (Chromium/Microsoft bug-bar shape); denies DREAD-style averaged scores."
+    },
+    {
+      "name": "review-record-norm",
+      "source": "./review-record-norm",
+      "description": "code_under_review: / closed_checks sha-matched evidence discipline for phase-2 review records."
+    },
+    {
+      "name": "review-proposal-completeness",
+      "source": "./review-proposal-completeness",
+      "description": "freelunch-grade structural completeness bar for this role's own phase-1 proposals (Request/Constraints/sourced-adoption/adopt-vs-skip/How-this-will-be-judged)."
     }
   ]
 }

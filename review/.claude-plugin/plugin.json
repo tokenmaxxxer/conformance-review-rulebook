@@ -1,6 +1,6 @@
 {
   "name": "review",
-  "description": "The review role on contract v3: per-requirement verdicts (Present|Surface|Absent|Incorrect|Unverifiable) on whether what was built matches what was specified \u2014 from the artifact and spec, never the builder's intent, never a fix. Directive carries the four facets; gates enforce record required fields, verdict vocabulary, closed_checks sha discipline (code_under_review:), and the Subject: issue-<n> trailer.",
+  "description": "Role identity and phase protocol for the review role on contract v3 (directive facets, phase-1/phase-2 write scoping, resume-state hook). Methodology enforcement lives in the sibling review-traceability/review-severity/review-record-norm/review-proposal-completeness plugins.",
   "author": {
     "name": "Jung Jiwon & Lee Jongkwan"
   }

@@ -1,0 +1,7 @@
+{
+  "name": "review-record-norm",
+  "description": "code_under_review: / closed_checks sha-matched evidence discipline for phase-2 review records.",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  }
+}
