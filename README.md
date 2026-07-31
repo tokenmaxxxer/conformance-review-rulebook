@@ -20,25 +20,26 @@ implementation.
 
 ## What is here
 
-    review/hooks/directive.sh           SessionStart — the four facets:
-                                        research (audit exemplars, sampling
-                                        derivation), survey (artifact-only,
-                                        extract every requirement first),
-                                        proposal (spec + requirement list +
-                                        code_under_review), judgment (verdict
-                                        vocabulary, evidence-as-diff-pointer,
-                                        never-fix, solo vs human calls)
-    review/hooks/record-fields-gate.sh  s20 minimum content + verdict
-                                        vocabulary + spec_vs_built on Incorrect
+    review/hooks/directive.sh           SessionStart stub — sources core's
+                                        role-directive.sh, supplies review's
+                                        four role-unique values (YOU DECIDE,
+                                        USE_WHEN, PRODUCES, HAND-OFF)
     review/hooks/closed-checks-gate.sh  a closed_checks cite must match the
                                         record's code_under_review: sha —
                                         never the working branch HEAD
-    review/hooks/trailer-gate.sh        commits staging docs/issue-<n>/** carry
-                                        `Subject: issue-<n>`
-    review/hooks/handbook-trigger-gate.sh  s21 same-turn handbook sync
+    review/hooks/tests/stub-check.sh    drift detector (core canon, copied
+                                        verbatim) — fails if a vendored copy
+                                        of trailer-gate.sh/record-fields-
+                                        gate.sh/handbook-trigger-gate.sh/
+                                        parse-check.sh reappears under here
     review/skills/finding-record        the finding schema and template
     review/skills/severity-classification  deterministic band lookup
     tests/                              repo-level checks (never installed)
+
+Commit-trailer enforcement (`Subject: issue-<n>`), s20 record-fields
+minimum-content checks, and s21 same-turn handbook sync are core canon
+gates (`core/hooks/hooks.json`, issue-31 / core issues #63 & #66) — they
+fire for every plugin install and are no longer vendored here.
 
 ## Record vocabulary
 
