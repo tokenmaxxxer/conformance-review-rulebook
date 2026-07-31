@@ -19,10 +19,15 @@ trap __fc EXIT
 # If closed_checks entries exist but no current sha can be determined, FAIL
 # CLOSED (refuse) — never allow an uncomparable cite-and-skip.
 #
-# Kill switch: export REVIEW_CYCLE_DISABLE=1
+# Kill switch: export REVIEW_CYCLE_DISABLE=1 (alias: REVIEW_RECORD_NORM_GATE_OFF=1)
 set -euo pipefail
 
 case "${REVIEW_CYCLE_DISABLE:-}" in
+  ""|0|false|no|off) ;;
+  *) exit 0 ;;
+esac
+
+case "${REVIEW_RECORD_NORM_GATE_OFF:-}" in
   ""|0|false|no|off) ;;
   *) exit 0 ;;
 esac

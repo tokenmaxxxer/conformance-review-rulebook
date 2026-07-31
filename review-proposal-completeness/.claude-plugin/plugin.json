@@ -1,0 +1,7 @@
+{
+  "name": "review-proposal-completeness",
+  "description": "freelunch-grade structural completeness bar for this role's own phase-1 proposals (Request/Constraints/sourced-adoption/adopt-vs-skip/How-this-will-be-judged).",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  }
+}

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One-shot installer for the tokenmaxxxer review-agent-rulebook stack.
 # Registers ONLY the tokenmaxxxer-review marketplace and installs ONLY this
-# repository's plugins (review).
+# repository's plugins (review, review-traceability, review-severity,
+# review-record-norm, review-proposal-completeness).
 # Names no other repository and no other marketplace.
 #
 # Installs for your account only (user scope). Uses a real `claude` CLI
@@ -11,9 +12,8 @@
 set -euo pipefail
 
 MARKET="tokenmaxxxer-review"
-BUNDLE="review"
 GITHUB_REPO="tokenmaxxxer/review-agent-rulebook"
-PLUGINS=(review)
+PLUGINS=(review review-traceability review-severity review-record-norm review-proposal-completeness)
 
 usage() {
   cat <<'USAGE'
@@ -51,12 +51,11 @@ SETTINGS_SOURCE_JSON="{\"source\": \"github\", \"repo\": \"$GITHUB_REPO\"}"
 #   - back up before writing;
 #   - follow a symlink rather than replacing it.
 write_settings() {
-  python3 - "$MARKET" "$BUNDLE" "$SETTINGS_SOURCE_JSON" "$1" "${PLUGINS[@]}" <<'PY'
+  python3 - "$MARKET" "$SETTINGS_SOURCE_JSON" "$1" "${PLUGINS[@]}" <<'PY'
 import json, os, shutil, sys
 
-market, bundle, source_json, path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-plugins = sys.argv[5:]
-key = f"{bundle}@{market}"
+market, source_json, path = sys.argv[1], sys.argv[2], sys.argv[3]
+plugins = sys.argv[4:]
 
 home = os.path.realpath(os.path.expanduser("~"))
 requested = os.path.expanduser(path)
@@ -107,7 +106,6 @@ elif not isinstance(enabled, dict):
     enabled = {}
 for plugin in plugins:
     enabled[f"{plugin}@{market}"] = True
-enabled[key] = True
 settings["enabledPlugins"] = enabled
 
 tmp = path + ".tmp"
@@ -150,19 +148,17 @@ if [ -n "$CLI" ] && [ -x "$CLI" ]; then
   for plugin in "${PLUGINS[@]}"; do
     "$CLI" plugin install "$plugin@$MARKET" --scope user || install_failed="$install_failed $plugin"
   done
-  "$CLI" plugin install "$BUNDLE@$MARKET" --scope user || install_failed="$install_failed $BUNDLE"
 
   for plugin in "${PLUGINS[@]}"; do
     "$CLI" plugin update "$plugin@$MARKET" || true
   done
-  "$CLI" plugin update "$BUNDLE@$MARKET" || true
 
   if [ -n "$install_failed" ]; then
     echo "==> FAILED to install:$install_failed"
     echo "    The rest of the stack is installed. Re-run this script — it is idempotent —"
     echo "    or install the failures individually with: $CLI plugin install <name>@$MARKET --scope user"
   else
-    echo "==> installed $BUNDLE@$MARKET."
+    echo "==> installed ${PLUGINS[*]}@$MARKET."
   fi
 else
   echo "==> no claude CLI found (standalone or bundled): writing user settings directly"
@@ -179,6 +175,6 @@ cat <<'MSG'
     - RECOMMENDED: open /plugin -> marketplaces -> tokenmaxxxer-review and enable
       auto-update. There is no CLI/config switch for this toggle; it is a
       one-time interactive step.
-    - without auto-update, refresh manually anytime:
+    - without auto-update, refresh manually anytime, e.g.:
       claude plugin update review@tokenmaxxxer-review
 MSG

@@ -1,0 +1,7 @@
+{
+  "name": "review-traceability",
+  "description": "Per-requirement conformance traceability (ISO 19011/IIA evidence-based, independent verdicts; spec_ref + evidence field enforcement, issues #30/#37/#38).",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  }
+}

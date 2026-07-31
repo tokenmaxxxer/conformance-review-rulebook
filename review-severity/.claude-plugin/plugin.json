@@ -1,0 +1,7 @@
+{
+  "name": "review-severity",
+  "description": "Deterministic severity table-lookup enforcement (Chromium/Microsoft bug-bar shape); denies DREAD-style averaged scores.",
+  "author": {
+    "name": "Jung Jiwon & Lee Jongkwan"
+  }
+}

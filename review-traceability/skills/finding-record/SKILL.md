@@ -115,3 +115,16 @@ not have had its spec locator pinned down either.
 - Write to any file other than `review-record.md`.
 - Treat a complete-looking diff as a `Present` verdict without an evidence
   pointer into it.
+
+## Per-requirement checklist
+
+Before writing a verdict for this requirement, confirm:
+- [ ] spec_ref names a stable locator (id, or heading+paragraph) — not
+      the free-text requirement string itself.
+- [ ] evidence is a pointer into the artifact (file:line/hunk) — not a
+      paraphrase, not a summary of what the builder said they did.
+- [ ] the verdict came from looking at the artifact, not from the
+      builder's account of their own intent.
+- [ ] if Unverifiable: the reason access was unavailable is named.
+- [ ] if closed_checks are cited: code_sha matches this record's own
+      code_under_review: (or upstream:), not the working branch HEAD.
