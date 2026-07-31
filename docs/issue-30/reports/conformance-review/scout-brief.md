@@ -16,11 +16,12 @@ Everything else in this brief is grounded in a fetched result, not recall.
 ## Must-be (non-negotiable across every source surveyed)
 
 - **Requirement-by-requirement, not holistic.** Every conformance/audit
-  method surveyed (ISO/IEC 17007 conformance test suites, W3C test
-  suites, IETF interoperability reports, ISO 19011 audit findings, IIA
-  Standards) decomposes the spec into discrete checkable requirements and
-  renders one verdict per requirement — never a single pass/fail on "the
-  whole thing."
+  method fetched this session (W3C test-suite Test Requirements, RTM
+  practice, ISO 19011 audit findings, IIA Standards; ISO/IEC 17007 and
+  IETF interoperability reports carried from prior research, see
+  Assumption below) decomposes the spec into discrete checkable
+  requirements and renders one verdict per requirement — never a single
+  pass/fail on "the whole thing."
 - **Evidence-based verdicts.** ISO 19011's audit principle "evidence-based
   approach" and IIA's Standard 2310 ("Identifying Information") both
   require a verifiable basis for every finding — an assertion without a

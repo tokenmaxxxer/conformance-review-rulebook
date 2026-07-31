@@ -195,11 +195,35 @@ records missing `spec_ref` while the skill doc claims it's required.
   `PRODUCES` is judged sufficient at this role's scale.
 - Any change to `review/hooks/closed-checks-gate.sh` — unrelated to this
   issue's methodology question.
-- Live web verification of every source cited — this session ran without
-  confirmed web-search access; sources marked `[known reference, not
-  fetched live]` in the scout brief should be re-verified before being
-  cited externally, but are treated as sufficiently reliable common
-  knowledge for this internal rulebook decision.
+- Full primary-source verification of every claim — live web search WAS
+  used this session (see the scout brief's Sources list) and grounds most
+  claims in a fetched secondary source; ISO/IEC 17007 and a specific IETF
+  interoperability-report RFC were not reachable this session and remain
+  marked `[assumption]` in the scout brief, to be re-verified against
+  primary text if a future reader needs that level of rigor.
+
+## Alternatives considered
+
+- **Leave the methodology implicit and only document it in a report, with
+  no proposal artifact.** Rejected: contract v3 §21 requires durable
+  methodology choices to be filed as a decision/spec a future reader can
+  find, not left inside a one-off report only the current reader sees;
+  issue #30 explicitly asks for a norm the process itself follows going
+  forward.
+- **Adopt full ISO/IEC certification-body machinery** (accredited test
+  labs, certification marks) as the deliverable's target shape. Rejected:
+  this role produces a review record for one repo's own work, not a
+  third-party conformance certificate — that machinery answers a question
+  no consumer of this role's output is asking.
+
+**Failure signal.** If this proposal is wrong, phase 2's `spec_ref` field
+addition will make review records *harder*, not easier, for a
+zero-context reader to reconstruct (contract v3 §18 gate B) — e.g.
+reviewers start filling `spec_ref` with copy-pasted noise because the
+underlying spec has no stable locators, adding a required field with no
+real traceability gain. If that is observed within the next few subjects
+reviewed under the new field, phase 2's field addition should be reverted
+rather than kept for its own sake.
 
 ## How this will be judged
 
