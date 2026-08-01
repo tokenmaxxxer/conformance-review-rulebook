@@ -32,7 +32,14 @@
 set -uo pipefail
 
 BASH32="${PARSE_CHECK_BASH:-/bin/bash}"
-dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../review/hooks" 2>/dev/null && pwd -P)}"
+# Default to the whole repo root (recursive find below reaches every
+# plugin's hooks/ and tests/ dirs), not review/hooks — issue #39 split the
+# review plugin set into five sibling plugins (review, review-traceability,
+# review-severity, review-record-norm, review-proposal-completeness), and
+# review/hooks/ now holds no *-gate.sh file at all. A caller who ran this
+# with no argument, trusting README, was silently checking zero of the four
+# real gate files (issue #42).
+dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd -P)}"
 [ -d "$dir" ] || { echo "parse-check: no such directory: $dir" >&2; exit 2; }
 [ -x "$BASH32" ] || { echo "parse-check: $BASH32 is not executable" >&2; exit 2; }
 "$BASH32" --version | head -1
@@ -49,7 +56,7 @@ while IFS= read -r f; do
     printf 'FAIL  %s\n%s\n' "${f#"$dir"/}" "$err"
     fail=1
   fi
-done < <(find "$dir" -name '*.sh' -type f | sort)
+done < <(find "$dir" -path '*/.git' -prune -o -name '*.sh' -type f -print | sort)
 
 if [ "$found" = 0 ]; then
   echo "parse-check: no shell files under $dir — nothing was checked" >&2
