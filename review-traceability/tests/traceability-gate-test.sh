@@ -159,5 +159,25 @@ field, so this must not be treated as a phase-2 verdict block.
 '
 run allow verdict-word-in-prose-not-a-field traceability-gate.sh "$P2" "$FALSE_POSITIVE_PROSE"
 
+# --- missing-core / NotebookEdit (issue-75/issue-45) ---
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  "$P2" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$V_MISSING_SPEC")" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/traceability-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+run_notebookedit() { # want name gate file new_source edit_mode
+  want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
+  td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+  python3 -c 'import json,sys; d={"tool_name":"NotebookEdit","tool_input":{"notebook_path":sys.argv[1],"new_source":sys.argv[2],"edit_mode":sys.argv[3]},"cwd":sys.argv[4]}; print(json.dumps(d))' \
+    "$file" "$src" "$mode" "$td" \
+    | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/$gate" >/dev/null 2>&1
+  rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+  rm -rf "$td"; report "$want" "$got" "$name"
+}
+run_notebookedit deny  notebookedit-missing-spec-ref traceability-gate.sh "$P2" "$V_MISSING_SPEC" replace
+run_notebookedit allow notebookedit-verdict-ok       traceability-gate.sh "$P2" "$V_OK" replace
+
 printf '\n== %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

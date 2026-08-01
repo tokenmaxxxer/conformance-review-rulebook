@@ -28,6 +28,11 @@
       "name": "review-proposal-completeness",
       "source": "./review-proposal-completeness",
       "description": "freelunch-grade structural completeness bar for this role's own phase-1 proposals (Request/Constraints/sourced-adoption/adopt-vs-skip/How-this-will-be-judged)."
+    },
+    {
+      "name": "review-agent-env",
+      "source": "./review-agent-env",
+      "description": "One-install bundle pulling in review, review-traceability, review-severity, review-record-norm, and review-proposal-completeness as dependencies. Contains no code of its own."
     }
   ]
 }

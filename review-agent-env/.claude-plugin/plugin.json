@@ -1,11 +1,15 @@
 {
   "name": "review-agent-env",
   "version": "0.1.0",
-  "description": "One-install review environment: pulls in review-cycle as a dependency. Contains no code of its own.",
+  "description": "One-install review environment: pulls in the five review-cycle plugins (issue #39 split of the former monolithic review-cycle) as dependencies. Contains no code of its own.",
   "author": {
     "name": "Jung Jiwon & Lee Jongkwan"
   },
   "dependencies": [
-    "review-cycle"
+    "review",
+    "review-traceability",
+    "review-severity",
+    "review-record-norm",
+    "review-proposal-completeness"
   ]
 }

@@ -5,9 +5,24 @@ Current state. Edited from now on to stay true.
 Issue #39 replaced the single `review` plugin's ad-hoc methodology
 enforcement with **five self-contained plugins**, each independently
 registered in `.claude-plugin/marketplace.json` and installed by
-`install.sh`'s `PLUGINS` array. A third check, stub-check, remains core
-canon (core #69) and is run by reference against the installed `core`
-plugin — never vendored as a local copy.
+`install.sh`'s `PLUGINS` array, plus a sixth one-install bundle
+(`review-agent-env`, no code of its own — declares the five above as
+`dependencies`; added to the marketplace/README/`install.sh` in issue
+#45). A third check, stub-check, remains core canon (core #69) and is
+run by reference against the installed `core` plugin — never vendored as
+a local copy.
+
+All four gates below (`review-traceability`, `review-severity`,
+`review-record-norm`, `review-proposal-completeness`) are dispatched on
+matcher `Write|Edit|MultiEdit|NotebookEdit|Bash` — `Bash` and
+`NotebookEdit` both landed in issue #45 (`Bash`'s content-scan branch was
+implemented and tested before this but not registered in the matcher, a
+dead branch; `NotebookEdit` was matcher-advertised but silently allowed
+through in code, a no-op). Each `*-gate.sh`'s `. ".../gate-lib.sh"` source
+line (and `review/hooks/directive.sh`'s `. ".../role-directive.sh"`)
+carries a `||`-guard, per core issue #75's fail-open fix, applied by
+reference — an unreachable core denies (exit 2) rather than silently
+allowing every write through.
 
 - `review/hooks/` — role identity / phase protocol, the composition root:
   - `directive.sh` — SessionStart stub. Sources core canon's
@@ -25,7 +40,7 @@ plugin — never vendored as a local copy.
   - No PreToolUse gate lives here anymore — `closed-checks-gate.sh`
     relocated to `review-record-norm/` (below).
 - `review-traceability/hooks/traceability-gate.sh` — PreToolUse
-  (Write|Edit|MultiEdit). Phase-1 mode (`docs/issue-<n>/proposals/
+  (Write|Edit|MultiEdit|NotebookEdit|Bash). Phase-1 mode (`docs/issue-<n>/proposals/
   review.md`): requires a requirement list or an explicit sampling
   derivation. Phase-2 mode (`docs/issue-<n>/reports/(conformance-)?
   review.md`): every verdict token (`Present|Surface|Absent|Incorrect|
@@ -51,6 +66,10 @@ plugin — never vendored as a local copy.
   Constraints / sourced-adoption / adopt-vs-skip / How-this-will-be-
   judged). Kill switch `REVIEW_PROPOSAL_COMPLETENESS_GATE_OFF=1`. No core
   canon counterpart.
+- `review-agent-env/` — one-install bundle, no `hooks.json`/code of its
+  own (out of scope for the matcher/code parity check by construction —
+  it has no PreToolUse branch to reconcile). `dependencies` in its
+  `plugin.json` names the five plugins above.
 - `stub-check.sh` — core canon (`core/hooks/tests/stub-check.sh`), run by
   reference against the installed `core` plugin, not vendored under
   `review/hooks/`. Fails if a vendored copy of `trailer-gate.sh` /

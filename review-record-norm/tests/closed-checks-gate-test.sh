@@ -119,5 +119,28 @@ run_bash_write() { # want name gate command
 run_bash_write deny bash-write-same-target-as-write closed-checks-gate.sh "echo 'code_sha: x' >> $REC"
 run_bash_write allow bash-write-unrelated-target    closed-checks-gate.sh "echo hi >> README.md"
 
+# 7. missing-core -> guarded source must deny, not allow (issue-75/issue-45).
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+printf '%s' "$CC_MISMATCH" > "$td/$REC"
+pf="$td/.payload.json"
+python3 -c 'import json,sys; d={"tool_name":"Edit","tool_input":{"file_path":sys.argv[1],"old_string":"9999999","new_string":"abc1234def","replace_all":False},"cwd":sys.argv[2]}; print(json.dumps(d))' \
+  "$REC" "$td" > "$pf"
+env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/closed-checks-gate.sh" < "$pf" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+# 8. NotebookEdit reaches the same content check a Write would (issue-45 (b)).
+run_notebookedit() { # want name gate file new_source edit_mode
+  want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
+  td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+  python3 -c 'import json,sys; d={"tool_name":"NotebookEdit","tool_input":{"notebook_path":sys.argv[1],"new_source":sys.argv[2],"edit_mode":sys.argv[3]},"cwd":sys.argv[4]}; print(json.dumps(d))' \
+    "$file" "$src" "$mode" "$td" \
+    | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/$gate" >/dev/null 2>&1
+  rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+  rm -rf "$td"; report "$want" "$got" "$name"
+}
+run_notebookedit deny  notebookedit-sha-mismatch closed-checks-gate.sh "$REC" "$CC_MISMATCH" replace
+run_notebookedit allow notebookedit-sha-match    closed-checks-gate.sh "$REC" "$CC_OK" replace
+
 printf '\n== %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# One-shot installer for the tokenmaxxxer review-agent-rulebook stack.
+# One-shot installer for the tokenmaxxxer conformance-review-rulebook stack.
 # Registers ONLY the tokenmaxxxer-review marketplace and installs ONLY this
 # repository's plugins (review, review-traceability, review-severity,
-# review-record-norm, review-proposal-completeness).
+# review-record-norm, review-proposal-completeness, review-agent-env).
 # Names no other repository and no other marketplace.
 #
 # Installs for your account only (user scope). Uses a real `claude` CLI
@@ -12,8 +12,8 @@
 set -euo pipefail
 
 MARKET="tokenmaxxxer-review"
-GITHUB_REPO="tokenmaxxxer/review-agent-rulebook"
-PLUGINS=(review review-traceability review-severity review-record-norm review-proposal-completeness)
+GITHUB_REPO="tokenmaxxxer/conformance-review-rulebook"
+PLUGINS=(review review-traceability review-severity review-record-norm review-proposal-completeness review-agent-env)
 
 usage() {
   cat <<'USAGE'
