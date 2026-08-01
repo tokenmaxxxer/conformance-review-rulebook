@@ -108,5 +108,25 @@ run_bash_write() { # want name gate command
 run_bash_write deny bash-write-same-target-as-write severity-gate.sh "echo 'severity: 7.5' >> $REC"
 run_bash_write allow bash-write-unrelated-target    severity-gate.sh "echo hi >> README.md"
 
+# 7. missing-core -> guarded source must deny, not allow (issue-75/issue-45).
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"severity: 7.5\\n"},"cwd":"%s"}' "$REC" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/severity-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+# 8. NotebookEdit reaches the same content check a Write would (issue-45 (b)).
+run_notebookedit() { # want name gate file new_source edit_mode
+  want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
+  td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+  python3 -c 'import json,sys; d={"tool_name":"NotebookEdit","tool_input":{"notebook_path":sys.argv[1],"new_source":sys.argv[2],"edit_mode":sys.argv[3]},"cwd":sys.argv[4]}; print(json.dumps(d))' \
+    "$file" "$src" "$mode" "$td" \
+    | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/$gate" >/dev/null 2>&1
+  rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+  rm -rf "$td"; report "$want" "$got" "$name"
+}
+run_notebookedit deny  notebookedit-numeric-severity severity-gate.sh "$REC" $'severity: 7.5\n' replace
+run_notebookedit allow notebookedit-table-severity   severity-gate.sh "$REC" $'severity: High\n' replace
+
 printf '\n== %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

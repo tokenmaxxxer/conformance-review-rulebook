@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh"
+. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh" || { echo "traceability-gate.sh: cannot source gate-lib.sh" >&2; exit 2; }
 gate_trap_fail_closed
 # ^ fail-closed trap-at-top, from gate-lib.sh (issue-72): any abnormal
 #   termination (failed source, set -u abort, unbound var, etc.) before the
@@ -7,7 +7,7 @@ gate_trap_fail_closed
 #   treats any non-2 exit as NON-BLOCKING (fail-open). Installed as the FIRST
 #   executable statement, above set -uo pipefail.
 #
-# PreToolUse(Write|Edit|MultiEdit|Bash) gate for the `review-traceability`
+# PreToolUse(Write|Edit|MultiEdit|NotebookEdit|Bash) gate for the `review-traceability`
 # plugin — migrated to the gate-house standard (core issue #72) per
 # docs/issue-42/proposals/conformance-review.md.
 #
@@ -87,16 +87,16 @@ try:
                      "uninspected." % rel_tok)
         sys.exit(0)
 
-    if tool not in ("Write", "Edit", "MultiEdit"):
+    if tool not in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
 
     ti = ev.get("tool_input")
     if not isinstance(ti, dict):
         deny("tool_input missing or not an object on a %s call; denying rather than allowing an uninspectable write." % tool)
 
-    path = ti.get("file_path")
+    path = ti.get("file_path") if tool != "NotebookEdit" else ti.get("notebook_path")
     if not isinstance(path, str) or not path:
-        deny("no usable file_path on a %s call; denying rather than allowing an unidentifiable write." % tool)
+        deny("no usable file_path/notebook_path on a %s call; denying rather than allowing an unidentifiable write." % tool)
 
     rel = gate_lib.gate_normalize_path(root, path)
     if rel is None:

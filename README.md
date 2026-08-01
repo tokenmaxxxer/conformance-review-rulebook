@@ -22,7 +22,8 @@ implementation.
 ## What is here
 
 Five self-contained plugins (issue #39's split), each a directory with its
-own `.claude-plugin/plugin.json`, `hooks/`, and `tests/`:
+own `.claude-plugin/plugin.json`, `hooks/`, and `tests/`, plus a sixth
+one-install bundle (`review-agent-env`, no code of its own — see below):
 
     review/hooks/directive.sh                  SessionStart stub — sources core's
                                                role-directive.sh, supplies review's
@@ -56,6 +57,11 @@ own `.claude-plugin/plugin.json`, `hooks/`, and `tests/`:
                                                own phase-1 proposals (issue
                                                #39 (b.5))
 
+    review-agent-env/                          one-install bundle; declares the
+                                               five plugins above as
+                                               dependencies, contains no code
+                                               of its own, no hooks.json
+
     tests/                                     repo-level checks (never installed):
                                                parse-check.sh, deny-only-check.sh,
                                                run-gate-tests.sh (aggregate runner)
@@ -63,7 +69,8 @@ own `.claude-plugin/plugin.json`, `hooks/`, and `tests/`:
 All four `*-gate.sh` scripts source `core`'s gate-house standard
 (`core/hooks/lib/gate-lib.sh` + `gate-lib.py`, issue #72) by reference —
 never a vendored copy — for their fail-closed trap, kill-switch check, JSON
-parse, path normalize, and Write/Edit/MultiEdit/Bash reconstruction, per
+parse, path normalize, and Write/Edit/MultiEdit/NotebookEdit/Bash
+reconstruction, per
 [`docs/handbooks/gate-house-standard.md`](https://github.com/tokenmaxxxer/tokenmaxxxer-core/blob/main/docs/handbooks/gate-house-standard.md)
 (issue #42's remediation). `core/hooks/tests/compliance-check.sh` (also
 referenced, never vendored) checks each plugin's `hooks/` directory for
@@ -90,6 +97,7 @@ fire for every plugin install and are not vendored here.
     claude plugin install review-severity@tokenmaxxxer-review
     claude plugin install review-record-norm@tokenmaxxxer-review
     claude plugin install review-proposal-completeness@tokenmaxxxer-review
+    claude plugin install review-agent-env@tokenmaxxxer-review
 
 or run `install.sh` in this repo, which does the same for user scope.
 

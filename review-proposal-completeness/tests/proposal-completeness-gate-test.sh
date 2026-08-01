@@ -245,5 +245,25 @@ This change only touches a new self-contained plugin directory.
 - the gate exits with exit code 2 on an incomplete proposal'
 run deny adopt-and-source-same-paragraph-not-adjacent-now-denies proposal-completeness-gate.sh "$PROP" "$CONTENT_ADOPT_UNRELATED_SOURCE_SAME_PARAGRAPH"
 
+# --- missing-core / NotebookEdit (issue-75/issue-45) ---
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  "$PROP" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$FULL")" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/proposal-completeness-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+run_notebookedit() { # want name gate file new_source edit_mode
+  want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
+  td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
+  python3 -c 'import json,sys; d={"tool_name":"NotebookEdit","tool_input":{"notebook_path":sys.argv[1],"new_source":sys.argv[2],"edit_mode":sys.argv[3]},"cwd":sys.argv[4]}; print(json.dumps(d))' \
+    "$file" "$src" "$mode" "$td" \
+    | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/$gate" >/dev/null 2>&1
+  rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+  rm -rf "$td"; report "$want" "$got" "$name"
+}
+run_notebookedit deny  notebookedit-missing-request proposal-completeness-gate.sh "$PROP" "$CONTENT_NO_REQUEST" replace
+run_notebookedit allow notebookedit-full-proposal    proposal-completeness-gate.sh "$PROP" "$FULL" replace
+
 printf '\n== %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
