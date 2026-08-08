@@ -83,11 +83,24 @@ fire for every plugin install and are not vendored here.
 
 ## Record vocabulary
 
-`loop_state`: `idle, scoped, auditing, draft-reported, reported`
-(terminal: `reported`). Cross-role signals: per-requirement `verdict:`,
-`evidence:`, `rationale:`, `spec_vs_built:` (Incorrect only), optional
-`severity:`, `closed_checks:` keyed to `code_under_review:`, inline
-`finding` blocks with `addressed_to:`/`severity: blocking|advisory`.
+`loop_state`, bucketed per the marketplace `conformance-review` role spec
+(`roles/specs/conformance-review.spec.json`, issue-521) with this
+rulebook's own extra progress states listed as a named superset (they are
+load-bearing for `review/hooks/state.sh`'s resume-state detection, not a
+mismatch to fix):
+- progress: `auditing` (spec), plus this rulebook's own `idle`, `scoped`,
+  `draft-reported`
+- terminal: `reported`
+- refusal: `spec-ambiguous`
+- error: `subject-unreadable`
+
+Cross-role signals: per-requirement `verdict:`, `evidence:`,
+`rationale:`, `spec_vs_built:` (Incorrect only), optional `severity:`,
+`closed_checks:` keyed to `code_under_review:`, inline `finding` blocks
+with `addressed_to:`/`severity: blocking|advisory`. EARL field
+cross-reference (spec's `required_fields` vs. this rulebook's own):
+`verdict`→`result`, `spec_ref`→`test`, subject-under-audit→`subject`,
+reviewer identity→`assertedBy`.
 
 ## Install
 
