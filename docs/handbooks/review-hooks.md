@@ -94,6 +94,28 @@ aggregate runner over the four new per-plugin test files
 — the three promoted core gates' test coverage still lives in core's own
 test suite.
 
+## conformance-review spec alignment (issue-521)
+
+The marketplace `conformance-review` role spec
+(`roles/specs/conformance-review.spec.json`, `tokenmaxxxer/on-the-record`
+issue-521) names two rules over this rulebook's own
+`subject`/`test`/`result`/`assertedBy`-equivalent vocabulary
+(`review-traceability/skills/finding-record/SKILL.md`'s
+`spec_ref`/`verdict`/`evidence` fields). Neither is enforced by any gate
+in this repo:
+
+- `reference_resolution` (test/subject must resolve to a real conformance
+  criterion and repo path, not a vague description) — `checked_by`
+  `on-the-record/hooks/role-spec-reference-guard.sh`, owned and enforced
+  upstream in `tokenmaxxxer/on-the-record`. This rulebook's own
+  `review-traceability/hooks/traceability-gate.sh` enforces a weaker,
+  related structural requirement (a `spec_ref:`+`evidence:` pair must be
+  present), not the semantic resolution check.
+- `recomputation` (overall verdict = worst-case result across cited
+  entries, never an independently-asserted summary) — `checked_by`: TBD
+  upstream (issue-521 out-of-scope note); unenforced anywhere, including
+  here.
+
 ## Known gap
 
 Core's `record-fields-gate.sh` defaults `RECORD_FIELDS_TERMINAL_STATES` to
