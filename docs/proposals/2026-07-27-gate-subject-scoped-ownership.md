@@ -1,5 +1,5 @@
 ---
-status: approved
+status: landed
 files:
   - review-cycle/hooks/state-gate.sh
   - review-cycle/hooks/run-gate-tests.sh
