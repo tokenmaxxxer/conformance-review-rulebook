@@ -8,6 +8,25 @@ pass=0; fail=0
 report() { if [ "$2" = "$1" ]; then pass=$((pass+1)); printf 'ok     %-34s %s\n' "$3" "$2"; else fail=$((fail+1)); printf 'FAIL   %-34s want=%s got=%s\n' "$3" "$1" "$2"; fi; }
 
 REC=docs/issue-7/reports/review.md
+
+# --- test-env resolution (docs/specs/test-env-resolution.md, issue #551) ---
+# 7. missing-core -> guarded source must deny, not allow (issue-75/issue-45).
+# Runs unconditionally, in both regimes: asserts the *gate's* own
+# fail-closed contract, not the test runner's environment.
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"severity: 7.5\\n"},"cwd":"%s"}' "$REC" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/severity-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+resolved="$(python3 "$HERE/../../tests/lib/test_env_resolve.py" "$HERE/../../core")"
+rc=$?
+if [ "$rc" -eq 75 ]; then
+  printf '\n== %d passed, %d failed (SKIP: remaining core-dependent cases) ==\n' "$pass" "$fail"
+  exit 75
+fi
+export CLAUDE_PLUGIN_ROOT_CORE="$resolved"
+
 run() { # want name gate file content [extra_env...]
   want="$1"; name="$2"; gate="$3"; file="$4"; content="$5"; shift 5
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
@@ -107,13 +126,6 @@ run_bash_write() { # want name gate command
 }
 run_bash_write deny bash-write-same-target-as-write severity-gate.sh "echo 'severity: 7.5' >> $REC"
 run_bash_write allow bash-write-unrelated-target    severity-gate.sh "echo hi >> README.md"
-
-# 7. missing-core -> guarded source must deny, not allow (issue-75/issue-45).
-td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
-printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"severity: 7.5\\n"},"cwd":"%s"}' "$REC" "$td" \
-  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/severity-gate.sh" >/dev/null 2>&1
-rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
-rm -rf "$td"; report deny "$got" missing-core
 
 # 8. NotebookEdit reaches the same content check a Write would (issue-45 (b)).
 run_notebookedit() { # want name gate file new_source edit_mode

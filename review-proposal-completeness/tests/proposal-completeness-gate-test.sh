@@ -42,6 +42,25 @@ modify review/, marketplace.json, or install.sh.
 - the gate exits with exit code 2 on an incomplete proposal
 - `tests/deny-only-check.sh` reports no permissionDecision allow'
 
+# --- test-env resolution (docs/specs/test-env-resolution.md, issue #551) ---
+# missing-core -> guarded source must deny, not allow (issue-75/issue-45).
+# Runs unconditionally, in both regimes: asserts the *gate's* own
+# fail-closed contract, not the test runner's environment.
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  "$PROP" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$FULL")" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/proposal-completeness-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+resolved="$(python3 "$HERE/../../tests/lib/test_env_resolve.py" "$HERE/../../core")"
+rc=$?
+if [ "$rc" -eq 75 ]; then
+  printf '\n== %d passed, %d failed (SKIP: remaining core-dependent cases) ==\n' "$pass" "$fail"
+  exit 75
+fi
+export CLAUDE_PLUGIN_ROOT_CORE="$resolved"
+
 CONTENT_NO_REQUEST="${FULL/'## Request'/'## NotRequest'}"
 CONTENT_NO_CONSTRAINTS='## Request
 
@@ -245,14 +264,7 @@ This change only touches a new self-contained plugin directory.
 - the gate exits with exit code 2 on an incomplete proposal'
 run deny adopt-and-source-same-paragraph-not-adjacent-now-denies proposal-completeness-gate.sh "$PROP" "$CONTENT_ADOPT_UNRELATED_SOURCE_SAME_PARAGRAPH"
 
-# --- missing-core / NotebookEdit (issue-75/issue-45) ---
-td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
-printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
-  "$PROP" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$FULL")" "$td" \
-  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/proposal-completeness-gate.sh" >/dev/null 2>&1
-rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
-rm -rf "$td"; report deny "$got" missing-core
-
+# --- NotebookEdit (issue-45) ---
 run_notebookedit() { # want name gate file new_source edit_mode
   want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
