@@ -94,6 +94,20 @@ aggregate runner over the four new per-plugin test files
 — the three promoted core gates' test coverage still lives in core's own
 test suite.
 
+### Test-env resolution (issue-51, on-the-record issue #551)
+
+All four `*-gate-test.sh` scripts and `tests/run-gate-tests.sh` adopt the
+canonical test-env resolution convention (`docs/specs/test-env-resolution.md`).
+Each script resolves core via `tests/lib/test_env_resolve.py` (vendored
+verbatim from the on-the-record reference module — that sibling checkout
+is read-only here, so it cannot be imported cross-repo). On a plain
+checkout with `CLAUDE_PLUGIN_ROOT_CORE` unset and no `../../core` sibling,
+each script runs only its self-contained `missing-core -> deny` case, then
+prints the convention's `SKIP: core plugin unreachable — unverifiable
+outside spawn env` and exits `75`; `run-gate-tests.sh` tallies a `75`
+sub-script exit as SKIP, not FAIL. With core reachable, all cases run
+unchanged.
+
 ## conformance-review spec alignment (issue-521)
 
 The marketplace `conformance-review` role spec

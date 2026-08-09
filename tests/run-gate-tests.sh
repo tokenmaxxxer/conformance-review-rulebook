@@ -10,7 +10,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$HERE/.."
 
-pass=0; fail=0
+# Test-env resolution convention (docs/specs/test-env-resolution.md, issue
+# #551): a suite script exits 75 when core is unreachable outside the
+# spawn env — that is a SKIP, not a suite FAIL.
+pass=0; fail=0; skip=0
 for t in \
   "$ROOT/review-traceability/tests/traceability-gate-test.sh" \
   "$ROOT/review-severity/tests/severity-gate-test.sh" \
@@ -18,14 +21,14 @@ for t in \
   "$ROOT/review-proposal-completeness/tests/proposal-completeness-gate-test.sh" \
 ; do
   echo "== $t =="
-  if bash "$t"; then
-    pass=$((pass+1))
-  else
-    fail=$((fail+1))
-    echo "FAIL: $t"
-  fi
+  bash "$t"; rc=$?
+  case "$rc" in
+    0) pass=$((pass+1)) ;;
+    75) skip=$((skip+1)); echo "SKIP: $t" ;;
+    *) fail=$((fail+1)); echo "FAIL: $t" ;;
+  esac
   echo
 done
 
-printf '\n== %d suites passed, %d suites failed ==\n' "$pass" "$fail"
+printf '\n== %d suites passed, %d suites skipped, %d suites failed ==\n' "$pass" "$skip" "$fail"
 [ "$fail" -eq 0 ]

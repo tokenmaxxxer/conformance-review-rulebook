@@ -59,6 +59,25 @@ spec_ref: contract.md#s3
 Verdict: Unverifiable
 '
 
+# --- test-env resolution (docs/specs/test-env-resolution.md, issue #551) ---
+# missing-core -> guarded source must deny, not allow (issue-75/issue-45).
+# Runs unconditionally, in both regimes: asserts the *gate's* own
+# fail-closed contract, not the test runner's environment.
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  "$P2" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$V_MISSING_SPEC")" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/traceability-gate.sh" >/dev/null 2>&1
+rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
+rm -rf "$td"; report deny "$got" missing-core
+
+resolved="$(python3 "$HERE/../../tests/lib/test_env_resolve.py" "$HERE/../../core")"
+rc=$?
+if [ "$rc" -eq 75 ]; then
+  printf '\n== %d passed, %d failed (SKIP: remaining core-dependent cases) ==\n' "$pass" "$fail"
+  exit 75
+fi
+export CLAUDE_PLUGIN_ROOT_CORE="$resolved"
+
 run allow phase1-list-present     traceability-gate.sh "$P1" "$LIST_OK"
 run deny  phase1-list-absent      traceability-gate.sh "$P1" "$LIST_MISSING"
 run allow phase1-sampling-derivation traceability-gate.sh "$P1" "$SAMPLING"
@@ -159,14 +178,7 @@ field, so this must not be treated as a phase-2 verdict block.
 '
 run allow verdict-word-in-prose-not-a-field traceability-gate.sh "$P2" "$FALSE_POSITIVE_PROSE"
 
-# --- missing-core / NotebookEdit (issue-75/issue-45) ---
-td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
-printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
-  "$P2" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$V_MISSING_SPEC")" "$td" \
-  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/traceability-gate.sh" >/dev/null 2>&1
-rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
-rm -rf "$td"; report deny "$got" missing-core
-
+# --- NotebookEdit (issue-45) ---
 run_notebookedit() { # want name gate file new_source edit_mode
   want="$1"; name="$2"; gate="$3"; file="$4"; src="$5"; mode="$6"
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/reports"
