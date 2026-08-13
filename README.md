@@ -66,6 +66,15 @@ one-install bundle (`review-agent-env`, no code of its own — see below):
                                                parse-check.sh, deny-only-check.sh,
                                                run-gate-tests.sh (aggregate runner)
 
+    playbook/                                 operational decision rules (issue-1174):
+                                               condition -> choice -> source per
+                                               decision axis (requirement-extraction,
+                                               verification-method-selection,
+                                               verdict-assignment,
+                                               traceability-and-evidence,
+                                               sampling-derivation); one file per axis,
+                                               each with a `removal`-classified rule
+
 All four `*-gate.sh` scripts source `core`'s gate-house standard
 (`core/hooks/lib/gate-lib.sh` + `gate-lib.py`, issue #72) by reference —
 never a vendored copy — for their fail-closed trap, kill-switch check, JSON
