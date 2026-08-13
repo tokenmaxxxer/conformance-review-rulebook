@@ -48,3 +48,13 @@ must state a defensible sampling scope instead.
    sample plan to be fixed before the draw, not adjusted post-hoc based on the
    outcome. ([ResearchGate: Estimation of Software Reliability by Stratified
    Sampling](https://www.researchgate.net/publication/220403866_Estimation_of_Software_Reliability_by_Stratified_Sampling))
+
+5. **When** deriving strata under rule 1, **assign each stratum an impact
+   tier from the requirement's own stated consequence of failure (security,
+   data-loss, or user-facing-correctness impact vs. cosmetic/internal), and
+   exempt the highest tier from sampling entirely** — inspect every item in
+   a high-impact stratum rather than drawing a sample from it, reserving
+   sampling for the lower-impact strata where a missed item costs little.
+   A fixed sample fraction applied uniformly across tiers treats a
+   security-critical item and a cosmetic one as equally safe to skip, which
+   they are not.

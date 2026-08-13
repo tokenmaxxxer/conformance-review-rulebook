@@ -45,3 +45,12 @@ that looks rigorous but didn't actually check the claim.
    par with the other three — an existing automated Test result is not
    downgraded to Inspection merely because a human is doing the review.
    ([IEEE SA: 29148-2018](https://standards.ieee.org/standard/29148-2018.html))
+
+5. **When** a requirement already has a recorded, replayable interaction
+   fixture that both the requesting and the satisfying side of the
+   requirement can be checked against (a captured request/response pair, a
+   golden snapshot, a recorded message exchange), **prefer replaying that
+   fixture over re-reading prose documentation to judge conformance** — a
+   replay either matches or it doesn't, while a prose comparison depends on
+   the reviewer's own interpretation of ambiguous wording. Treat a passing
+   replay as Test-method evidence per rule 4, not as a fresh Inspection.

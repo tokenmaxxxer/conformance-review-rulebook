@@ -48,3 +48,11 @@ evidence for a requirement has been located (or not).
    (removal) source: RTM continuous-maintenance practice — traceability is
    "a daily habit," meaning links persist and get referenced, not rebuilt
    wholesale each pass. ([Jama Software: Traceability Matrix guide](https://www.jamasoftware.com/requirements-management-guide/requirements-traceability/traceability-matrix/))
+
+5. **When** assigning Incorrect or Absent, **name the specific clause of the
+   requirement that the evidence fails to satisfy**, not a bare verdict
+   label — "Incorrect" alone tells the owning role a requirement failed but
+   not which of its clauses to fix, forcing them to re-derive the same
+   comparison the review already made. State the failing clause the same way
+   a passing requirement's evidence citation is stated, so the verdict is
+   itself actionable without a follow-up question.

@@ -43,3 +43,11 @@ of a conformance-review pass, before any verdict is rendered.
    re-deriving your own N — re-deriving silently changes what "complete" means
    mid-review. source: this repo's own record-format convention (a derived:
    line must cite the actual command/path that produced a count claim).
+
+5. **When** one requirement's check-worthiness or expected verdict is
+   conditional on another requirement's outcome (e.g. "requirement B only
+   applies if requirement A's flag is enabled"), **keep each as its own list
+   item and state the dependency inline**, rather than merging B into A's
+   line or silently dropping B when A doesn't obviously apply — a merged or
+   dropped conditional requirement disappears from the checkable list instead
+   of surfacing as a requirement whose applicability itself needs a verdict.

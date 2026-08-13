@@ -45,3 +45,12 @@ forward/backward links stay honest.
    "consistent" characteristic — a requirement set with two entries pointing
    at identical evidence is not internally consistent as a checkable list.
    ([Well-Architected Guide: ISO/IEC/IEEE 29148 SRS template](https://www.well-architected-guide.com/documents/iso-iec-ieee-29148-template/))
+
+5. **When** the spec itself exists in more than one version/draft that a
+   target artifact could plausibly be built against (a versioned schema, a
+   revised API contract, a superseded policy revision), **name the exact
+   spec version the evidence was checked against alongside the file:line
+   citation**, not just "the spec" — a citation with no version pin cannot
+   later distinguish "conforms to the version in force" from "conforms to a
+   version already superseded," and a reader re-deriving the verdict against
+   the current spec would silently check the wrong baseline.
