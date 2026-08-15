@@ -48,3 +48,22 @@ evidence for a requirement has been located (or not).
    (removal) source: RTM continuous-maintenance practice — traceability is
    "a daily habit," meaning links persist and get referenced, not rebuilt
    wholesale each pass. ([Jama Software: Traceability Matrix guide](https://www.jamasoftware.com/requirements-management-guide/requirements-traceability/traceability-matrix/))
+
+5. **When** assigning Incorrect or Absent, **name the specific clause of the
+   requirement that the evidence fails to satisfy**, not a bare verdict
+   label — "Incorrect" alone tells the owning role a requirement failed but
+   not which of its clauses to fix, forcing them to re-derive the same
+   comparison the review already made. State the failing clause the same way
+   a passing requirement's evidence citation is stated, so the verdict is
+   itself actionable without a follow-up question.
+
+6. **When** an Absent or Incorrect verdict rests on a single-pass reading of
+   evidence that could plausibly be a false positive (a near-miss name match,
+   a stale reference, a path that resolves to the wrong artifact version),
+   **re-check that specific evidence once against the current artifact state
+   before finalizing the verdict**, rather than asserting it on the first
+   pass — a defect claim that turns out to be a false positive costs the
+   owning role more rework than one extra confirmation pass costs the
+   reviewer. source: false-positive-verification practice in security-audit
+   tooling, which gates a finding behind a dedicated re-check step before it
+   is reported rather than trusting the first detection.

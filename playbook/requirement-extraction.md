@@ -43,3 +43,21 @@ of a conformance-review pass, before any verdict is rendered.
    re-deriving your own N — re-deriving silently changes what "complete" means
    mid-review. source: this repo's own record-format convention (a derived:
    line must cite the actual command/path that produced a count claim).
+
+5. **When** one requirement's check-worthiness or expected verdict is
+   conditional on another requirement's outcome (e.g. "requirement B only
+   applies if requirement A's flag is enabled"), **keep each as its own list
+   item and state the dependency inline**, rather than merging B into A's
+   line or silently dropping B when A doesn't obviously apply — a merged or
+   dropped conditional requirement disappears from the checkable list instead
+   of surfacing as a requirement whose applicability itself needs a verdict.
+
+6. **When** extracting a requirement, **tag it with its dimension type**
+   (functional behavior, error-handling, edge-case, or scope-boundary) rather
+   than leaving every extracted item in one undifferentiated list — a
+   requirement list with no dimension tags cannot show whether error-handling
+   or edge-case coverage was actually sampled, only that some N requirements
+   were checked overall. source: specification-readiness scoring practice
+   that grades a spec across named dimensions (problem statement, scope,
+   acceptance criteria, error handling, edge cases) separately rather than as
+   one undifferentiated completeness score.
