@@ -56,3 +56,14 @@ evidence for a requirement has been located (or not).
    comparison the review already made. State the failing clause the same way
    a passing requirement's evidence citation is stated, so the verdict is
    itself actionable without a follow-up question.
+
+6. **When** an Absent or Incorrect verdict rests on a single-pass reading of
+   evidence that could plausibly be a false positive (a near-miss name match,
+   a stale reference, a path that resolves to the wrong artifact version),
+   **re-check that specific evidence once against the current artifact state
+   before finalizing the verdict**, rather than asserting it on the first
+   pass — a defect claim that turns out to be a false positive costs the
+   owning role more rework than one extra confirmation pass costs the
+   reviewer. source: false-positive-verification practice in security-audit
+   tooling, which gates a finding behind a dedicated re-check step before it
+   is reported rather than trusting the first detection.

@@ -51,3 +51,13 @@ of a conformance-review pass, before any verdict is rendered.
    line or silently dropping B when A doesn't obviously apply — a merged or
    dropped conditional requirement disappears from the checkable list instead
    of surfacing as a requirement whose applicability itself needs a verdict.
+
+6. **When** extracting a requirement, **tag it with its dimension type**
+   (functional behavior, error-handling, edge-case, or scope-boundary) rather
+   than leaving every extracted item in one undifferentiated list — a
+   requirement list with no dimension tags cannot show whether error-handling
+   or edge-case coverage was actually sampled, only that some N requirements
+   were checked overall. source: specification-readiness scoring practice
+   that grades a spec across named dimensions (problem statement, scope,
+   acceptance criteria, error handling, edge cases) separately rather than as
+   one undifferentiated completeness score.
